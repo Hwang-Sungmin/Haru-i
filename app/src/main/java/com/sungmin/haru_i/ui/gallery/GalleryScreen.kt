@@ -342,7 +342,7 @@ fun HighlightSection(
                         
                         if (showMemoDialog) {
                             MemoDialog(
-                                initialMemo = photo.memo,
+                                photo = photo,
                                 onDismiss = { showMemoDialog = false },
                                 onSave = { memo ->
                                     onUpdateMemo(photo, memo)
@@ -399,11 +399,14 @@ fun HighlightSection(
 
 @Composable
 fun MemoDialog(
-    initialMemo: String,
+    photo: Photo,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
-    var memo by remember { mutableStateOf(initialMemo) }
+    var memo by remember { 
+        val defaultDate = DateUtils.formatDate(if (photo.dateTaken > 0) photo.dateTaken else photo.dateAdded * 1000L)
+        mutableStateOf(photo.memo.ifEmpty { defaultDate }) 
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,

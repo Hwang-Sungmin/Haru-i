@@ -1,6 +1,9 @@
 package com.sungmin.haru_i.util
 
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object DateUtils {
@@ -29,5 +32,10 @@ object DateUtils {
 
     fun formatDDay(days: Long): String {
         return if (days >= 0) "D+$days" else "D$days"
+    }
+
+    fun formatDate(timestamp: Long): String {
+        val dateFormat = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN)
+        return dateFormat.format(Date(timestamp))
     }
 }

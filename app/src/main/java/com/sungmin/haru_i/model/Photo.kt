@@ -8,5 +8,6 @@ data class Photo(
     val name: String,
     val dateAdded: Long,
     val isFavorite: Boolean = false,
-    val memo: String = ""
+    val memo: String = "",
+    val dateTaken: Long = 0L
 )
