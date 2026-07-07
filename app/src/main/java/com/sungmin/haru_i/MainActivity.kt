@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.FaceDetectorHelper
 import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AppDatabase
@@ -19,13 +20,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         val database = AppDatabase.getDatabase(this)
+        val babyManager = BabyManager(this)
         val repository = PhotoRepository(this, database.photoDao())
         val faceDetectorHelper = FaceDetectorHelper(this)
         
         setContent {
             HaruiTheme {
                 val viewModel: GalleryViewModel = viewModel(
-                    factory = GalleryViewModelFactory(repository, faceDetectorHelper)
+                    factory = GalleryViewModelFactory(repository, faceDetectorHelper, babyManager)
                 )
                 GalleryScreen(viewModel = viewModel)
             }

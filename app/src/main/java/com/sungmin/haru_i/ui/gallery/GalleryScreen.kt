@@ -36,6 +36,12 @@ import com.sungmin.haru_i.model.Photo
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 
+import com.sungmin.haru_i.data.BabyInfo
+import com.sungmin.haru_i.util.DateUtils
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.window.Dialog
+import java.util.Calendar
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(
@@ -43,6 +49,8 @@ fun GalleryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val analyzingMonths by viewModel.analyzingMonths.collectAsState()
+    
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     // 스크롤 상태를 탭 전환 시에도 유지하기 위해 호이스팅
     val timelineGridState = rememberLazyGridState()
@@ -77,10 +85,22 @@ fun GalleryScreen(
                                 fontWeight = FontWeight.Bold
                             )
                         )
+                    },
+                    actions = {
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "설정")
+                        }
                     }
                 )
+                
                 if (uiState is GalleryUiState.Success) {
                     val state = uiState as GalleryUiState.Success
+                    
+                    // Baby Info Banner
+                    if (state.babyInfo.birthday > 0) {
+                        BabyInfoBanner(state.babyInfo)
+                    }
+
                     TabRow(
                         selectedTabIndex = state.selectedTab,
                         containerColor = Color.Transparent,
@@ -106,6 +126,19 @@ fun GalleryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (showSettingsDialog) {
+                val currentInfo = (uiState as? GalleryUiState.Success)?.babyInfo ?: BabyInfo()
+                BabySettingsDialog(
+                    initialName = currentInfo.name,
+                    initialBirthday = currentInfo.birthday,
+                    onDismiss = { showSettingsDialog = false },
+                    onSave = { name, birthday ->
+                        viewModel.updateBabyInfo(name, birthday)
+                        showSettingsDialog = false
+                    }
+                )
+            }
+
             when (val state = uiState) {
                 is GalleryUiState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -115,6 +148,7 @@ fun GalleryScreen(
                         if (state.favoritePhotos.isNotEmpty()) {
                             HighlightSection(
                                 photos = state.favoritePhotos,
+                                babyBirthday = state.babyInfo.birthday,
                                 onToggleFavorite = { viewModel.toggleFavorite(it) }
                             )
                         }
@@ -133,6 +167,7 @@ fun GalleryScreen(
                                     state = timelineGridState,
                                     groupedPhotos = state.groupedPhotos,
                                     analyzingMonths = analyzingMonths,
+                                    babyBirthday = state.babyInfo.birthday,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                                     onAnalyzeMonth = { month, photos -> 
                                         viewModel.analyzeMonth(month, photos)
@@ -142,6 +177,7 @@ fun GalleryScreen(
                                 PhotoGrid(
                                     state = babyPhotoGridState,
                                     photos = photos,
+                                    babyBirthday = state.babyInfo.birthday,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) }
                                 )
                             }
@@ -161,8 +197,105 @@ fun GalleryScreen(
 }
 
 @Composable
+fun BabyInfoBanner(babyInfo: BabyInfo) {
+    val dday = DateUtils.calculateDDay(babyInfo.birthday, System.currentTimeMillis())
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("👶", fontSize = 20.sp)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = if (babyInfo.name.isEmpty()) "우리 아기" else babyInfo.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "태어난 지 ${DateUtils.formatDDay(dday)}째 되는 날",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BabySettingsDialog(
+    initialName: String,
+    initialBirthday: Long,
+    onDismiss: () -> Unit,
+    onSave: (String, Long) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var year by remember { 
+        val cal = Calendar.getInstance()
+        if (initialBirthday > 0) cal.timeInMillis = initialBirthday
+        mutableStateOf(cal.get(Calendar.YEAR).toString()) 
+    }
+    var month by remember { 
+        val cal = Calendar.getInstance()
+        if (initialBirthday > 0) cal.timeInMillis = initialBirthday
+        mutableStateOf((cal.get(Calendar.MONTH) + 1).toString()) 
+    }
+    var day by remember { 
+        val cal = Calendar.getInstance()
+        if (initialBirthday > 0) cal.timeInMillis = initialBirthday
+        mutableStateOf(cal.get(Calendar.DAY_OF_MONTH).toString()) 
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("아기 정보 설정") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("아기 이름") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("생년월일", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("년") }, modifier = Modifier.weight(1.5f))
+                    OutlinedTextField(value = month, onValueChange = { month = it }, label = { Text("월") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = day, onValueChange = { day = it }, label = { Text("일") }, modifier = Modifier.weight(1f))
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val cal = Calendar.getInstance().apply {
+                    set(year.toIntOrNull() ?: 2024, (month.toIntOrNull() ?: 1) - 1, day.toIntOrNull() ?: 1)
+                }
+                onSave(name, cal.timeInMillis)
+            }) {
+                Text("저장")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
+}
+
+@Composable
 fun HighlightSection(
     photos: List<Photo>,
+    babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit
 ) {
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
@@ -181,7 +314,7 @@ fun HighlightSection(
                         .size(120.dp)
                         .clip(RoundedCornerShape(16.dp))
                 ) {
-                    PhotoItem(photo = photo, onToggleFavorite = onToggleFavorite)
+                    PhotoItem(photo = photo, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite)
                 }
             }
         }
@@ -195,6 +328,7 @@ fun TimelineGrid(
     state: LazyGridState,
     groupedPhotos: Map<String, List<Photo>>,
     analyzingMonths: Set<String>,
+    babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit,
     onAnalyzeMonth: (String, List<Photo>) -> Unit
 ) {
@@ -245,7 +379,7 @@ fun TimelineGrid(
                 }
             }
             items(photos, key = { it.id }) { photo ->
-                PhotoItem(photo = photo, onToggleFavorite = onToggleFavorite)
+                PhotoItem(photo = photo, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite)
             }
         }
     }
@@ -255,6 +389,7 @@ fun TimelineGrid(
 fun PhotoGrid(
     state: LazyGridState,
     photos: List<Photo>,
+    babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit
 ) {
     LazyVerticalGrid(
@@ -266,7 +401,7 @@ fun PhotoGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(photos, key = { it.id }) { photo ->
-            PhotoItem(photo = photo, onToggleFavorite = onToggleFavorite)
+            PhotoItem(photo = photo, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite)
         }
     }
 }
@@ -274,6 +409,7 @@ fun PhotoGrid(
 @Composable
 fun PhotoItem(
     photo: Photo,
+    babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit
 ) {
     Box(
@@ -291,6 +427,26 @@ fun PhotoItem(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
+
+        // D-Day Tag
+        if (babyBirthday > 0) {
+            val photoDDay = DateUtils.calculateDDay(babyBirthday, photo.dateAdded * 1000L)
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp),
+                color = Color.Black.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = DateUtils.formatDDay(photoDDay),
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         IconButton(
             onClick = { onToggleFavorite(photo) },

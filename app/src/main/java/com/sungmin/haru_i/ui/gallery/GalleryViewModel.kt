@@ -2,6 +2,8 @@ package com.sungmin.haru_i.ui.gallery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sungmin.haru_i.data.BabyInfo
+import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.FaceDetectorHelper
 import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.model.Photo
@@ -24,14 +26,16 @@ sealed class GalleryUiState {
         val filteredPhotos: List<Photo>,
         val groupedPhotos: Map<String, List<Photo>>,
         val favoritePhotos: List<Photo>,
-        val selectedTab: Int = 0
+        val selectedTab: Int = 0,
+        val babyInfo: BabyInfo = BabyInfo()
     ) : GalleryUiState()
     data class Error(val message: String) : GalleryUiState()
 }
 
 class GalleryViewModel(
     private val repository: PhotoRepository,
-    private val faceDetectorHelper: FaceDetectorHelper
+    private val faceDetectorHelper: FaceDetectorHelper,
+    private val babyManager: BabyManager
 ) : ViewModel() {
 
     private val _allPhotos = MutableStateFlow<List<Photo>>(emptyList())
@@ -43,9 +47,11 @@ class GalleryViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     private val _analyzingMonths = MutableStateFlow<Set<String>>(emptySet())
     val analyzingMonths = _analyzingMonths.asStateFlow()
+    
+    val babyInfo = babyManager.babyInfo
 
     val uiState: StateFlow<GalleryUiState> = combine(
-        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage
+        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val all = args[0] as List<Photo>
@@ -58,11 +64,12 @@ class GalleryViewModel(
         val tab = args[4] as Int
         val loading = args[5] as Boolean
         val error = args[6] as String?
+        val baby = args[7] as BabyInfo
 
         when {
             error != null -> GalleryUiState.Error(error)
             loading && all.isEmpty() -> GalleryUiState.Loading
-            else -> GalleryUiState.Success(all, filtered, grouped, favorites, tab)
+            else -> GalleryUiState.Success(all, filtered, grouped, favorites, tab, baby)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GalleryUiState.Loading)
 
@@ -76,6 +83,10 @@ class GalleryViewModel(
         }
     }
 
+    fun updateBabyInfo(name: String, birthday: Long) {
+        babyManager.updateBabyInfo(name, birthday)
+    }
+
     fun analyzeMonth(month: String, photos: List<Photo>) {
         if (_analyzingMonths.value.contains(month)) return
 
@@ -85,10 +96,9 @@ class GalleryViewModel(
             val currentFiltered = _filteredPhotos.value.toMutableList()
             
             photos.forEach { photo ->
-                // Only analyze if not already in filtered list
                 if (currentFiltered.none { it.id == photo.id }) {
                     if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                        currentFiltered.add(photo.copy()) // Ensure fresh copy
+                        currentFiltered.add(photo.copy())
                         _filteredPhotos.value = currentFiltered.toList()
                     }
                 }
@@ -120,18 +130,6 @@ class GalleryViewModel(
         val dateFormat = SimpleDateFormat("yyyy년 MM월", Locale.KOREAN)
         return photos.groupBy { photo ->
             dateFormat.format(Date(photo.dateAdded * 1000L))
-        }
-    }
-
-    private fun filterBabyPhotos(photos: List<Photo>) {
-        viewModelScope.launch {
-            val babyPhotos = mutableListOf<Photo>()
-            photos.forEach { photo ->
-                if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                    babyPhotos.add(photo)
-                    _filteredPhotos.value = babyPhotos.toList()
-                }
-            }
         }
     }
 }
