@@ -19,13 +19,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    splits {
+        abi {
+            isEnable = true // ABI 분할 기능 활성화
+            reset()
+            // 타겟으로 할 CPU 아키텍처를 지정합니다.
+            // 최신폰은 대부분 arm64-v8a, 구형폰은 armeabi-v7a를 씁니다.
+            include("arm64-v8a", "armeabi-v7a")
+            // 모든 CPU 코드를 담은 통합 APK는 만들지 않습니다.
+            isUniversalApk = false
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 1. 코드 압축 및 난독화 활성화 (용량 감소의 핵심)
+            isMinifyEnabled = true
+            // 2. 사용하지 않는 리소스(이미지, XML 등) 자동 삭제 활성화
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
