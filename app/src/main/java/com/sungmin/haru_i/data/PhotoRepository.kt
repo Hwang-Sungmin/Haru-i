@@ -21,9 +21,13 @@ class PhotoRepository(
         getMediaStorePhotos(),
         photoDao.getAllMeta()
     ) { mediaStorePhotos, favoriteMetas ->
-        val favoriteMap = favoriteMetas.associateBy { it.uri }
+        val metaMap = favoriteMetas.associateBy { it.uri }
         mediaStorePhotos.map { photo ->
-            photo.copy(isFavorite = favoriteMap[photo.uri.toString()]?.isFavorite ?: false)
+            val meta = metaMap[photo.uri.toString()]
+            photo.copy(
+                isFavorite = meta?.isFavorite ?: false,
+                memo = meta?.memo ?: ""
+            )
         }
     }.flowOn(Dispatchers.IO)
 
@@ -63,11 +67,18 @@ class PhotoRepository(
 
     suspend fun toggleFavorite(photo: Photo) {
         val newFavoriteStatus = !photo.isFavorite
+        val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
         photoDao.insertMeta(
-            PhotoMeta(
-                uri = photo.uri.toString(),
-                isFavorite = newFavoriteStatus
-            )
+            existingMeta?.copy(isFavorite = newFavoriteStatus)
+                ?: PhotoMeta(uri = photo.uri.toString(), isFavorite = newFavoriteStatus)
+        )
+    }
+
+    suspend fun updateMemo(photo: Photo, memo: String) {
+        val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
+        photoDao.insertMeta(
+            existingMeta?.copy(memo = memo)
+                ?: PhotoMeta(uri = photo.uri.toString(), memo = memo)
         )
     }
 }

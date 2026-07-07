@@ -83,6 +83,12 @@ class GalleryViewModel(
         }
     }
 
+    fun updateMemo(photo: Photo, memo: String) {
+        viewModelScope.launch {
+            repository.updateMemo(photo, memo)
+        }
+    }
+
     fun updateBabyInfo(name: String, birthday: Long) {
         babyManager.updateBabyInfo(name, birthday)
     }

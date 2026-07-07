@@ -29,15 +29,16 @@ class FaceDetectorHelper(private val context: Context) {
             
             // 2. 이미지 라벨링을 통해 아기 관련 키워드가 있는지 확인
             val labels = labeler.process(image).await()
-            labels.any { label ->
+            val isBaby = labels.any { label ->
                 val text = label.text.lowercase()
-                // 아기, 유아, 어린이 관련 키워드 필터링
                 text.contains("baby") || 
                 text.contains("infant") || 
                 text.contains("toddler") || 
-                text.contains("child") ||
-                text.contains("face") && label.confidence > 0.8 // 얼굴 확신도가 높을 때
+                text.contains("child")
             }
+            
+            // 아기 라벨이 있거나, 얼굴 확신도가 매우 높은 경우 (보정)
+            isBaby || faces.any { it.headEulerAngleY < 15 && it.headEulerAngleZ < 15 }
         } catch (e: Exception) {
             false
         }
