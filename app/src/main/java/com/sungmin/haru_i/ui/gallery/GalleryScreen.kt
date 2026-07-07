@@ -38,6 +38,11 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 
 import com.sungmin.haru_i.data.BabyInfo
 import com.sungmin.haru_i.util.DateUtils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.window.Dialog
@@ -301,70 +306,93 @@ fun HighlightSection(
     onToggleFavorite: (Photo) -> Unit,
     onUpdateMemo: (Photo, String) -> Unit
 ) {
-    Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Text(
-            text = "하이라이트 (성장 일기)",
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            items(photos) { photo ->
-                var showMemoDialog by remember { mutableStateOf(false) }
-                
-                if (showMemoDialog) {
-                    MemoDialog(
-                        initialMemo = photo.memo,
-                        onDismiss = { showMemoDialog = false },
-                        onSave = { memo ->
-                            onUpdateMemo(photo, memo)
-                            showMemoDialog = false
-                        }
-                    )
-                }
+    var isExpanded by remember { mutableStateOf(true) }
 
-                Column(
-                    modifier = Modifier
-                        .width(160.dp)
-                        .clickable { showMemoDialog = true }
+    Column(modifier = Modifier.padding(vertical = 12.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { isExpanded = !isExpanded }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "하이라이트 (성장 일기)",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (isExpanded) "접기" else "펼치기"
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(160.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                    ) {
-                        PhotoItem(
-                            photo = photo, 
-                            babyBirthday = babyBirthday, 
-                            onToggleFavorite = onToggleFavorite
-                        )
-                    }
-                    if (photo.memo.isNotEmpty()) {
-                        Text(
-                            text = photo.memo,
-                            modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                color = MaterialTheme.colorScheme.secondary
-                            ),
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    } else {
-                        Text(
-                            text = "메모를 남겨보세요...",
-                            modifier = Modifier.padding(top = 8.dp, start = 4.dp),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = Color.LightGray
+                    items(photos) { photo ->
+                        var showMemoDialog by remember { mutableStateOf(false) }
+                        
+                        if (showMemoDialog) {
+                            MemoDialog(
+                                initialMemo = photo.memo,
+                                onDismiss = { showMemoDialog = false },
+                                onSave = { memo ->
+                                    onUpdateMemo(photo, memo)
+                                    showMemoDialog = false
+                                }
                             )
-                        )
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .width(160.dp)
+                                .clickable { showMemoDialog = true }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(160.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                            ) {
+                                PhotoItem(
+                                    photo = photo, 
+                                    babyBirthday = babyBirthday, 
+                                    onToggleFavorite = onToggleFavorite
+                                )
+                            }
+                            if (photo.memo.isNotEmpty()) {
+                                Text(
+                                    text = photo.memo,
+                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    ),
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            } else {
+                                Text(
+                                    text = "메모를 남겨보세요...",
+                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.LightGray
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray)
     }
 }
