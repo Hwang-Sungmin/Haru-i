@@ -9,6 +9,7 @@ lifecycleViewModelCompose = "2.8.7"
 activityCompose = "1.9.3"
 coil = "2.7.0"
 mlkit-face-detection = "17.1.0"
+mlkit-image-labeling = "17.0.9"
 kotlinx-coroutines-play-services = "1.9.0"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.25"
@@ -33,6 +34,7 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 mlkit-face-detection = { group = "com.google.android.gms", name = "play-services-mlkit-face-detection", version.ref = "mlkit-face-detection" }
+mlkit-image-labeling = { group = "com.google.mlkit", name = "image-labeling", version.ref = "mlkit-image-labeling" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "kotlinx-coroutines-play-services" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }

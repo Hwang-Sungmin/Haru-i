@@ -87,7 +87,7 @@ class GalleryViewModel(
             photos.forEach { photo ->
                 // Only analyze if not already in filtered list
                 if (currentFiltered.none { it.id == photo.id }) {
-                    if (faceDetectorHelper.hasFace(photo.uri)) {
+                    if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
                         currentFiltered.add(photo.copy()) // Ensure fresh copy
                         _filteredPhotos.value = currentFiltered.toList()
                     }
@@ -127,7 +127,7 @@ class GalleryViewModel(
         viewModelScope.launch {
             val babyPhotos = mutableListOf<Photo>()
             photos.forEach { photo ->
-                if (faceDetectorHelper.hasFace(photo.uri)) {
+                if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
                     babyPhotos.add(photo)
                     _filteredPhotos.value = babyPhotos.toList()
                 }

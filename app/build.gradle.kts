@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coil.compose)
     implementation(libs.mlkit.face.detection)
+    implementation(libs.mlkit.image.labeling)
     implementation(libs.kotlinx.coroutines.play.services)
     
     implementation(libs.androidx.room.runtime)
