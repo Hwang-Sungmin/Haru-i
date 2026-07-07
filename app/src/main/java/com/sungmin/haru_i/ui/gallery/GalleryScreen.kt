@@ -33,6 +33,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.sungmin.haru_i.model.Photo
 
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(
@@ -40,6 +43,10 @@ fun GalleryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val analyzingMonths by viewModel.analyzingMonths.collectAsState()
+
+    // 스크롤 상태를 탭 전환 시에도 유지하기 위해 호이스팅
+    val timelineGridState = rememberLazyGridState()
+    val babyPhotoGridState = rememberLazyGridState()
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -123,6 +130,7 @@ fun GalleryScreen(
                         } else {
                             if (state.selectedTab == 0) {
                                 TimelineGrid(
+                                    state = timelineGridState,
                                     groupedPhotos = state.groupedPhotos,
                                     analyzingMonths = analyzingMonths,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
@@ -132,6 +140,7 @@ fun GalleryScreen(
                                 )
                             } else {
                                 PhotoGrid(
+                                    state = babyPhotoGridState,
                                     photos = photos,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) }
                                 )
@@ -183,12 +192,14 @@ fun HighlightSection(
 
 @Composable
 fun TimelineGrid(
+    state: LazyGridState,
     groupedPhotos: Map<String, List<Photo>>,
     analyzingMonths: Set<String>,
     onToggleFavorite: (Photo) -> Unit,
     onAnalyzeMonth: (String, List<Photo>) -> Unit
 ) {
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -242,10 +253,12 @@ fun TimelineGrid(
 
 @Composable
 fun PhotoGrid(
+    state: LazyGridState,
     photos: List<Photo>,
     onToggleFavorite: (Photo) -> Unit
 ) {
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
