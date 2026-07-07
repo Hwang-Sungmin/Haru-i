@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
@@ -38,6 +39,7 @@ fun GalleryScreen(
     viewModel: GalleryViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val analyzingMonths by viewModel.analyzingMonths.collectAsState()
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -122,7 +124,11 @@ fun GalleryScreen(
                             if (state.selectedTab == 0) {
                                 TimelineGrid(
                                     groupedPhotos = state.groupedPhotos,
-                                    onToggleFavorite = { viewModel.toggleFavorite(it) }
+                                    analyzingMonths = analyzingMonths,
+                                    onToggleFavorite = { viewModel.toggleFavorite(it) },
+                                    onAnalyzeMonth = { month, photos -> 
+                                        viewModel.analyzeMonth(month, photos)
+                                    }
                                 )
                             } else {
                                 PhotoGrid(
@@ -178,7 +184,9 @@ fun HighlightSection(
 @Composable
 fun TimelineGrid(
     groupedPhotos: Map<String, List<Photo>>,
-    onToggleFavorite: (Photo) -> Unit
+    analyzingMonths: Set<String>,
+    onToggleFavorite: (Photo) -> Unit,
+    onAnalyzeMonth: (String, List<Photo>) -> Unit
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -189,16 +197,41 @@ fun TimelineGrid(
     ) {
         groupedPhotos.forEach { (month, photos) ->
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    text = month,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 16.dp),
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = month,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
-                )
+                    
+                    val isAnalyzing = analyzingMonths.contains(month)
+                    TextButton(
+                        onClick = { onAnalyzeMonth(month, photos) },
+                        enabled = !isAnalyzing
+                    ) {
+                        if (isAnalyzing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("분석 중...", style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Face,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("아기 사진 찾기", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
             }
             items(photos, key = { it.id }) { photo ->
                 PhotoItem(photo = photo, onToggleFavorite = onToggleFavorite)

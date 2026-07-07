@@ -41,6 +41,8 @@ class GalleryViewModel(
     private val _selectedTab = MutableStateFlow(0)
     private val _isLoading = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
+    private val _analyzingMonths = MutableStateFlow<Set<String>>(emptySet())
+    val analyzingMonths = _analyzingMonths.asStateFlow()
 
     val uiState: StateFlow<GalleryUiState> = combine(
         _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage
@@ -74,6 +76,28 @@ class GalleryViewModel(
         }
     }
 
+    fun analyzeMonth(month: String, photos: List<Photo>) {
+        if (_analyzingMonths.value.contains(month)) return
+
+        viewModelScope.launch {
+            _analyzingMonths.value = _analyzingMonths.value + month
+            
+            val currentFiltered = _filteredPhotos.value.toMutableList()
+            
+            photos.forEach { photo ->
+                // Only analyze if not already in filtered list
+                if (currentFiltered.none { it.id == photo.id }) {
+                    if (faceDetectorHelper.hasFace(photo.uri)) {
+                        currentFiltered.add(photo.copy()) // Ensure fresh copy
+                        _filteredPhotos.value = currentFiltered.toList()
+                    }
+                }
+            }
+            
+            _analyzingMonths.value = _analyzingMonths.value - month
+        }
+    }
+
     fun loadPhotos() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -84,7 +108,6 @@ class GalleryViewModel(
                     _favoritePhotos.value = photos.filter { it.isFavorite }
                     _groupedPhotos.value = groupPhotosByMonth(photos)
                     _isLoading.value = false
-                    filterBabyPhotos(photos)
                 }
             } catch (e: Exception) {
                 _isLoading.value = false
