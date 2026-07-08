@@ -405,7 +405,8 @@ fun MemoDialog(
 ) {
     var memo by remember { 
         val defaultDate = DateUtils.formatDate(if (photo.dateTaken > 0) photo.dateTaken else photo.dateAdded * 1000L)
-        mutableStateOf(photo.memo.ifEmpty { defaultDate }) 
+        // 날짜 뒤에 한 줄 띄우고 입력을 시작할 수 있도록 초기값 설정
+        mutableStateOf(photo.memo.ifEmpty { "$defaultDate\n\n" })
     }
 
     AlertDialog(
