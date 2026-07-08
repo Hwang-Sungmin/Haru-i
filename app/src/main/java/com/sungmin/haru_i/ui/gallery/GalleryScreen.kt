@@ -57,6 +57,7 @@ fun GalleryScreen(
     val analyzingMonths by viewModel.analyzingMonths.collectAsState()
     
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var selectedPhotoForDetail by remember { mutableStateOf<Photo?>(null) }
 
     // 스크롤 상태를 탭 전환 시에도 유지하기 위해 호이스팅
     val timelineGridState = rememberLazyGridState()
@@ -145,6 +146,13 @@ fun GalleryScreen(
                 )
             }
 
+            selectedPhotoForDetail?.let { photo ->
+                PhotoDetailScreen(
+                    photo = photo,
+                    onDismiss = { selectedPhotoForDetail = null }
+                )
+            }
+
             when (val state = uiState) {
                 is GalleryUiState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -156,7 +164,8 @@ fun GalleryScreen(
                                 photos = state.favoritePhotos,
                                 babyBirthday = state.babyInfo.birthday,
                                 onToggleFavorite = { viewModel.toggleFavorite(it) },
-                                onUpdateMemo = { photo, memo -> viewModel.updateMemo(photo, memo) }
+                                onUpdateMemo = { photo, memo -> viewModel.updateMemo(photo, memo) },
+                                onPhotoClick = { selectedPhotoForDetail = it }
                             )
                         }
                         
@@ -178,14 +187,16 @@ fun GalleryScreen(
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                                     onAnalyzeMonth = { month, photos -> 
                                         viewModel.analyzeMonth(month, photos)
-                                    }
+                                    },
+                                    onPhotoClick = { selectedPhotoForDetail = it }
                                 )
                             } else {
                                 PhotoGrid(
                                     state = babyPhotoGridState,
                                     photos = photos,
                                     babyBirthday = state.babyInfo.birthday,
-                                    onToggleFavorite = { viewModel.toggleFavorite(it) }
+                                    onToggleFavorite = { viewModel.toggleFavorite(it) },
+                                    onPhotoClick = { selectedPhotoForDetail = it }
                                 )
                             }
                         }
@@ -304,7 +315,8 @@ fun HighlightSection(
     photos: List<Photo>,
     babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit,
-    onUpdateMemo: (Photo, String) -> Unit
+    onUpdateMemo: (Photo, String) -> Unit,
+    onPhotoClick: (Photo) -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(true) }
 
@@ -354,7 +366,6 @@ fun HighlightSection(
                         Column(
                             modifier = Modifier
                                 .width(160.dp)
-                                .clickable { showMemoDialog = true }
                         ) {
                             Box(
                                 modifier = Modifier
@@ -364,13 +375,16 @@ fun HighlightSection(
                                 PhotoItem(
                                     photo = photo, 
                                     babyBirthday = babyBirthday, 
-                                    onToggleFavorite = onToggleFavorite
+                                    onToggleFavorite = onToggleFavorite,
+                                    onClick = { onPhotoClick(photo) }
                                 )
                             }
                             if (photo.memo.isNotEmpty()) {
                                 Text(
                                     text = photo.memo,
-                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                                    modifier = Modifier
+                                        .padding(top = 8.dp, start = 4.dp, end = 4.dp)
+                                        .clickable { showMemoDialog = true },
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                         color = MaterialTheme.colorScheme.secondary
@@ -381,7 +395,9 @@ fun HighlightSection(
                             } else {
                                 Text(
                                     text = "메모를 남겨보세요...",
-                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                                    modifier = Modifier
+                                        .padding(top = 8.dp, start = 4.dp)
+                                        .clickable { showMemoDialog = true },
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = Color.LightGray
                                     )
@@ -406,7 +422,7 @@ fun MemoDialog(
     var memo by remember { 
         val defaultDate = DateUtils.formatDate(if (photo.dateTaken > 0) photo.dateTaken else photo.dateAdded * 1000L)
         // 날짜 뒤에 한 줄 띄우고 입력을 시작할 수 있도록 초기값 설정
-        mutableStateOf(photo.memo.ifEmpty { "$defaultDate\n\n" })
+        mutableStateOf(photo.memo.ifEmpty { "$defaultDate\n" })
     }
 
     AlertDialog(
@@ -439,7 +455,8 @@ fun TimelineGrid(
     analyzingMonths: Set<String>,
     babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit,
-    onAnalyzeMonth: (String, List<Photo>) -> Unit
+    onAnalyzeMonth: (String, List<Photo>) -> Unit,
+    onPhotoClick: (Photo) -> Unit
 ) {
     LazyVerticalGrid(
         state = state,
@@ -488,7 +505,12 @@ fun TimelineGrid(
                 }
             }
             items(photos, key = { it.id }) { photo ->
-                PhotoItem(photo = photo, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite)
+                PhotoItem(
+                    photo = photo, 
+                    babyBirthday = babyBirthday, 
+                    onToggleFavorite = onToggleFavorite,
+                    onClick = { onPhotoClick(photo) }
+                )
             }
         }
     }
@@ -499,7 +521,8 @@ fun PhotoGrid(
     state: LazyGridState,
     photos: List<Photo>,
     babyBirthday: Long,
-    onToggleFavorite: (Photo) -> Unit
+    onToggleFavorite: (Photo) -> Unit,
+    onPhotoClick: (Photo) -> Unit
 ) {
     LazyVerticalGrid(
         state = state,
@@ -510,7 +533,12 @@ fun PhotoGrid(
         modifier = Modifier.fillMaxSize()
     ) {
         items(photos, key = { it.id }) { photo ->
-            PhotoItem(photo = photo, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite)
+            PhotoItem(
+                photo = photo, 
+                babyBirthday = babyBirthday, 
+                onToggleFavorite = onToggleFavorite,
+                onClick = { onPhotoClick(photo) }
+            )
         }
     }
 }
@@ -519,13 +547,15 @@ fun PhotoGrid(
 fun PhotoItem(
     photo: Photo,
     babyBirthday: Long,
-    onToggleFavorite: (Photo) -> Unit
+    onToggleFavorite: (Photo) -> Unit,
+    onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
