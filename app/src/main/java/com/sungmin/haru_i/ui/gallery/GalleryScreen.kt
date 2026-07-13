@@ -374,26 +374,40 @@ fun HighlightSection(
                                     .size(160.dp)
                                     .clip(RoundedCornerShape(20.dp))
                             ) {
+                                // Extract date from memo if possible
+                                val memoLines = photo.memo.split("\n")
+                                val dateFromMemo = if (memoLines.isNotEmpty() && memoLines[0].contains("일")) memoLines[0] else null
+                                
                                 PhotoItem(
                                     photo = photo, 
                                     babyBirthday = babyBirthday, 
                                     onToggleFavorite = onToggleFavorite,
-                                    onClick = { onPhotoClick(photo) }
+                                    onClick = { onPhotoClick(photo) },
+                                    displayDate = dateFromMemo
                                 )
                             }
                             if (photo.memo.isNotEmpty()) {
-                                Text(
-                                    text = photo.memo,
-                                    modifier = Modifier
-                                        .padding(top = 8.dp, start = 4.dp, end = 4.dp)
-                                        .clickable { showMemoDialog = true },
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                        color = MaterialTheme.colorScheme.secondary
-                                    ),
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
+                                val memoLines = photo.memo.split("\n")
+                                val contentOnly = if (memoLines.size > 1) {
+                                    memoLines.drop(1).joinToString("\n").trim()
+                                } else if (memoLines.isNotEmpty() && !memoLines[0].contains("일")) {
+                                    memoLines[0]
+                                } else ""
+
+                                if (contentOnly.isNotEmpty()) {
+                                    Text(
+                                        text = contentOnly,
+                                        modifier = Modifier
+                                            .padding(top = 8.dp, start = 4.dp, end = 4.dp)
+                                            .clickable { showMemoDialog = true },
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        ),
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
                             } else {
                                 Text(
                                     text = "메모를 남겨보세요...",
@@ -595,7 +609,8 @@ fun PhotoItem(
     photo: Photo,
     babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    displayDate: String? = null
 ) {
     Box(
         modifier = Modifier
@@ -614,9 +629,8 @@ fun PhotoItem(
             contentScale = ContentScale.Crop
         )
 
-        // D-Day Tag
-        if (babyBirthday > 0) {
-            val photoDDay = DateUtils.calculateDDay(babyBirthday, photo.dateAdded * 1000L)
+        // D-Day & Date Tag
+        if (babyBirthday > 0 || displayDate != null) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -624,13 +638,30 @@ fun PhotoItem(
                 color = Color.Black.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(4.dp)
             ) {
-                Text(
-                    text = DateUtils.formatDDay(photoDDay),
-                    color = Color.White,
+                Row(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (babyBirthday > 0) {
+                        val photoDDay = DateUtils.calculateDDay(babyBirthday, photo.dateAdded * 1000L)
+                        Text(
+                            text = DateUtils.formatDDay(photoDDay),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (displayDate != null) {
+                        if (babyBirthday > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = displayDate,
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 9.sp
+                        )
+                    }
+                }
             }
         }
 
