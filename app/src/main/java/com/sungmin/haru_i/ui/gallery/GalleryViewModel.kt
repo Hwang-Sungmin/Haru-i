@@ -27,7 +27,8 @@ sealed class GalleryUiState {
         val groupedPhotos: Map<String, List<Photo>>,
         val favoritePhotos: List<Photo>,
         val selectedTab: Int = 0,
-        val babyInfo: BabyInfo = BabyInfo()
+        val babyInfo: BabyInfo = BabyInfo(),
+        val selectedTimelineMonth: String? = null
     ) : GalleryUiState()
     data class Error(val message: String) : GalleryUiState()
 }
@@ -48,10 +49,13 @@ class GalleryViewModel(
     private val _analyzingMonths = MutableStateFlow<Set<String>>(emptySet())
     val analyzingMonths = _analyzingMonths.asStateFlow()
     
+    private val _selectedTimelineMonth = MutableStateFlow<String?>(null)
+    val selectedTimelineMonth = _selectedTimelineMonth.asStateFlow()
+    
     val babyInfo = babyManager.babyInfo
 
     val uiState: StateFlow<GalleryUiState> = combine(
-        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo
+        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo, _selectedTimelineMonth
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val all = args[0] as List<Photo>
@@ -65,16 +69,29 @@ class GalleryViewModel(
         val loading = args[5] as Boolean
         val error = args[6] as String?
         val baby = args[7] as BabyInfo
+        val selectedMonth = args[8] as String?
 
         when {
             error != null -> GalleryUiState.Error(error)
             loading && all.isEmpty() -> GalleryUiState.Loading
-            else -> GalleryUiState.Success(all, filtered, grouped, favorites, tab, baby)
+            else -> GalleryUiState.Success(
+                allPhotos = all,
+                filteredPhotos = filtered,
+                groupedPhotos = grouped,
+                favoritePhotos = favorites,
+                selectedTab = tab,
+                babyInfo = baby,
+                selectedTimelineMonth = selectedMonth
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GalleryUiState.Loading)
 
     fun selectTab(index: Int) {
         _selectedTab.value = index
+    }
+
+    fun selectTimelineMonth(month: String) {
+        _selectedTimelineMonth.value = month
     }
 
     fun toggleFavorite(photo: Photo) {
@@ -122,7 +139,14 @@ class GalleryViewModel(
                 repository.getPhotos().collect { photos ->
                     _allPhotos.value = photos
                     _favoritePhotos.value = photos.filter { it.isFavorite }
-                    _groupedPhotos.value = groupPhotosByMonth(photos)
+                    val grouped = groupPhotosByMonth(photos)
+                    _groupedPhotos.value = grouped
+                    
+                    // Set default month if not selected
+                    if (_selectedTimelineMonth.value == null && grouped.isNotEmpty()) {
+                        _selectedTimelineMonth.value = grouped.keys.first()
+                    }
+
                     _isLoading.value = false
                 }
             } catch (e: Exception) {

@@ -182,13 +182,15 @@ fun GalleryScreen(
                                 TimelineGrid(
                                     state = timelineGridState,
                                     groupedPhotos = state.groupedPhotos,
+                                    selectedMonth = state.selectedTimelineMonth,
                                     analyzingMonths = analyzingMonths,
                                     babyBirthday = state.babyInfo.birthday,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                                     onAnalyzeMonth = { month, photos -> 
                                         viewModel.analyzeMonth(month, photos)
                                     },
-                                    onPhotoClick = { selectedPhotoForDetail = it }
+                                    onPhotoClick = { selectedPhotoForDetail = it },
+                                    onMonthSelect = { viewModel.selectTimelineMonth(it) }
                                 )
                             } else {
                                 PhotoGrid(
@@ -448,16 +450,22 @@ fun MemoDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineGrid(
     state: LazyGridState,
     groupedPhotos: Map<String, List<Photo>>,
+    selectedMonth: String?,
     analyzingMonths: Set<String>,
     babyBirthday: Long,
     onToggleFavorite: (Photo) -> Unit,
     onAnalyzeMonth: (String, List<Photo>) -> Unit,
-    onPhotoClick: (Photo) -> Unit
+    onPhotoClick: (Photo) -> Unit,
+    onMonthSelect: (String) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    val months = groupedPhotos.keys.toList()
+
     LazyVerticalGrid(
         state = state,
         columns = GridCells.Fixed(3),
@@ -466,7 +474,9 @@ fun TimelineGrid(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        groupedPhotos.forEach { (month, photos) ->
+        val photosToShow = selectedMonth?.let { groupedPhotos[it] } ?: emptyList()
+        
+        if (selectedMonth != null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(
                     modifier = Modifier
@@ -475,17 +485,53 @@ fun TimelineGrid(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = month,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    )
+                    // 통합된 월 선택 셀렉터
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded },
+                        modifier = Modifier.wrapContentWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .clickable { expanded = true }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = selectedMonth,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                            Icon(
+                                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            months.forEach { month ->
+                                DropdownMenuItem(
+                                    text = { Text(month) },
+                                    onClick = {
+                                        onMonthSelect(month)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     
-                    val isAnalyzing = analyzingMonths.contains(month)
+                    val isAnalyzing = analyzingMonths.contains(selectedMonth)
                     TextButton(
-                        onClick = { onAnalyzeMonth(month, photos) },
+                        onClick = { onAnalyzeMonth(selectedMonth, photosToShow) },
                         enabled = !isAnalyzing
                     ) {
                         if (isAnalyzing) {
@@ -504,7 +550,8 @@ fun TimelineGrid(
                     }
                 }
             }
-            items(photos, key = { it.id }) { photo ->
+            
+            items(photosToShow, key = { it.id }) { photo ->
                 PhotoItem(
                     photo = photo, 
                     babyBirthday = babyBirthday, 
