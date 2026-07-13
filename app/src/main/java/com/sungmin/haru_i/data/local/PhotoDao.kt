@@ -16,4 +16,20 @@ interface PhotoDao {
     
     @Query("SELECT * FROM photo_meta WHERE uri = :uri LIMIT 1")
     suspend fun getMetaByUri(uri: String): PhotoMeta?
+
+    // 앨범 관련 쿼리
+    @Query("SELECT * FROM albums ORDER BY createdAt DESC")
+    fun getAllAlbums(): Flow<List<AlbumEntity>>
+
+    @Insert
+    suspend fun insertAlbum(album: AlbumEntity): Long
+
+    @Delete
+    suspend fun deleteAlbum(album: AlbumEntity)
+
+    @Query("UPDATE photo_meta SET albumId = :albumId WHERE uri IN (:uris)")
+    suspend fun addPhotosToAlbum(uris: List<String>, albumId: Long?)
+
+    @Query("SELECT * FROM photo_meta WHERE albumId = :albumId")
+    fun getPhotosInAlbum(albumId: Long): Flow<List<PhotoMeta>>
 }

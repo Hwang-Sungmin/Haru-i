@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class PhotoMeta(
     @PrimaryKey val uri: String,
     val isFavorite: Boolean = false,
-    val memo: String = "" // 감성 메모 필드 추가
+    val memo: String = "",
+    val albumId: Long? = null // 소속된 앨범 ID 추가
 )

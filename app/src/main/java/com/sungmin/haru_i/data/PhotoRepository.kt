@@ -3,12 +3,14 @@ package com.sungmin.haru_i.data
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
+import com.sungmin.haru_i.data.local.AlbumEntity
 import com.sungmin.haru_i.data.local.PhotoDao
 import com.sungmin.haru_i.data.local.PhotoMeta
 import com.sungmin.haru_i.model.Photo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
@@ -26,10 +28,33 @@ class PhotoRepository(
             val meta = metaMap[photo.uri.toString()]
             photo.copy(
                 isFavorite = meta?.isFavorite ?: false,
-                memo = meta?.memo ?: ""
+                memo = meta?.memo ?: "",
+                albumId = meta?.albumId
             )
         }
     }.flowOn(Dispatchers.IO)
+
+    fun getAllAlbums(): Flow<List<AlbumEntity>> = photoDao.getAllAlbums()
+
+    suspend fun createAlbum(name: String, photos: List<Photo>) {
+        val albumId = photoDao.insertAlbum(AlbumEntity(name = name))
+        photoDao.addPhotosToAlbum(photos.map { it.uri.toString() }, albumId)
+    }
+
+    suspend fun removePhotoFromAlbum(photo: Photo) {
+        val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
+        photoDao.insertMeta(
+            existingMeta?.copy(albumId = null)
+                ?: PhotoMeta(uri = photo.uri.toString(), albumId = null)
+        )
+    }
+
+    suspend fun deleteAlbum(album: AlbumEntity) {
+        // First, clear albumId for all photos in this album
+        val photosInAlbum = photoDao.getPhotosInAlbum(album.id).first()
+        photoDao.addPhotosToAlbum(photosInAlbum.map { it.uri }, null)
+        photoDao.deleteAlbum(album)
+    }
 
     private fun getMediaStorePhotos(): Flow<List<Photo>> = flow {
         val photos = mutableListOf<Photo>()

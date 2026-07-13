@@ -19,6 +19,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import com.sungmin.haru_i.data.local.AlbumEntity
+
 sealed class GalleryUiState {
     object Loading : GalleryUiState()
     data class Success(
@@ -26,6 +28,7 @@ sealed class GalleryUiState {
         val filteredPhotos: List<Photo>,
         val groupedPhotos: Map<String, List<Photo>>,
         val favoritePhotos: List<Photo>,
+        val albums: List<AlbumEntity> = emptyList(),
         val selectedTab: Int = 0,
         val babyInfo: BabyInfo = BabyInfo(),
         val selectedTimelineMonth: String? = null
@@ -52,10 +55,17 @@ class GalleryViewModel(
     private val _selectedTimelineMonth = MutableStateFlow<String?>(null)
     val selectedTimelineMonth = _selectedTimelineMonth.asStateFlow()
     
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode = _selectionMode.asStateFlow()
+    
+    private val _selectedPhotos = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedPhotos = _selectedPhotos.asStateFlow()
+    
     val babyInfo = babyManager.babyInfo
+    val albums = repository.getAllAlbums()
 
     val uiState: StateFlow<GalleryUiState> = combine(
-        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo, _selectedTimelineMonth
+        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo, _selectedTimelineMonth, albums
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val all = args[0] as List<Photo>
@@ -70,6 +80,8 @@ class GalleryViewModel(
         val error = args[6] as String?
         val baby = args[7] as BabyInfo
         val selectedMonth = args[8] as String?
+        @Suppress("UNCHECKED_CAST")
+        val albumList = args[9] as List<AlbumEntity>
 
         when {
             error != null -> GalleryUiState.Error(error)
@@ -79,12 +91,37 @@ class GalleryViewModel(
                 filteredPhotos = filtered,
                 groupedPhotos = grouped,
                 favoritePhotos = favorites,
+                albums = albumList,
                 selectedTab = tab,
                 babyInfo = baby,
                 selectedTimelineMonth = selectedMonth
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GalleryUiState.Loading)
+
+    fun toggleSelectionMode(enabled: Boolean) {
+        _selectionMode.value = enabled
+        if (!enabled) _selectedPhotos.value = emptySet()
+    }
+
+    fun togglePhotoSelection(photoId: Long) {
+        val current = _selectedPhotos.value
+        _selectedPhotos.value = if (current.contains(photoId)) current - photoId else current + photoId
+    }
+
+    fun createAlbum(name: String) {
+        viewModelScope.launch {
+            val selected = _allPhotos.value.filter { _selectedPhotos.value.contains(it.id) }
+            repository.createAlbum(name, selected)
+            toggleSelectionMode(false)
+        }
+    }
+    
+    fun deleteAlbum(album: AlbumEntity) {
+        viewModelScope.launch {
+            repository.deleteAlbum(album)
+        }
+    }
 
     fun selectTab(index: Int) {
         _selectedTab.value = index
