@@ -41,6 +41,10 @@ class PhotoRepository(
         photoDao.addPhotosToAlbum(photos.map { it.uri.toString() }, albumId)
     }
 
+    suspend fun addPhotosToAlbum(albumId: Long, photos: List<Photo>) {
+        photoDao.addPhotosToAlbum(photos.map { it.uri.toString() }, albumId)
+    }
+
     suspend fun removePhotoFromAlbum(photo: Photo) {
         val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
         photoDao.insertMeta(

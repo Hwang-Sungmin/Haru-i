@@ -52,6 +52,7 @@ fun GalleryScreen(
     val selectedPhotos by viewModel.selectedPhotos.collectAsState()
     
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showAlbumSelectionDialog by remember { mutableStateOf(false) }
     var showAlbumCreateDialog by remember { mutableStateOf(false) }
     var selectedPhotoForDetail by remember { mutableStateOf<Photo?>(null) }
     var selectedAlbumForView by remember { mutableStateOf<AlbumEntity?>(null) }
@@ -98,8 +99,8 @@ fun GalleryScreen(
                                 Icon(Icons.Default.Settings, contentDescription = "설정")
                             }
                         } else if (selectedPhotos.isNotEmpty()) {
-                            IconButton(onClick = { showAlbumCreateDialog = true }) {
-                                Icon(Icons.Default.CreateNewFolder, contentDescription = "앨범 만들기")
+                            IconButton(onClick = { showAlbumSelectionDialog = true }) {
+                                Icon(Icons.Default.CreateNewFolder, contentDescription = "앨범에 추가")
                             }
                         }
                     }
@@ -147,6 +148,21 @@ fun GalleryScreen(
 
             selectedPhotoForDetail?.let { photo ->
                 PhotoDetailScreen(photo = photo, onDismiss = { selectedPhotoForDetail = null })
+            }
+
+            if (showAlbumSelectionDialog) {
+                AlbumSelectionDialog(
+                    albums = (uiState as? GalleryUiState.Success)?.albums ?: emptyList(),
+                    onAlbumSelected = { album ->
+                        viewModel.addSelectedPhotosToAlbum(album.id)
+                        showAlbumSelectionDialog = false
+                    },
+                    onCreateNewAlbum = {
+                        showAlbumSelectionDialog = false
+                        showAlbumCreateDialog = true
+                    },
+                    onDismiss = { showAlbumSelectionDialog = false }
+                )
             }
 
             if (showAlbumCreateDialog) {
@@ -450,6 +466,54 @@ fun PhotoItem(photo: Photo, babyBirthday: Long, onToggleFavorite: (Photo) -> Uni
             Icon(imageVector = if (photo.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = if (photo.isFavorite) Color.Red else Color.White, modifier = Modifier.size(18.dp))
         }
     }
+}
+
+@Composable
+fun AlbumSelectionDialog(
+    albums: List<AlbumEntity>,
+    onAlbumSelected: (AlbumEntity) -> Unit,
+    onCreateNewAlbum: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("앨범 선택") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = onCreateNewAlbum,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("새 앨범 만들기")
+                    }
+                }
+                
+                if (albums.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Text("기존 앨범에 추가", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                    
+                    Box(modifier = Modifier.heightIn(max = 300.dp)) {
+                        androidx.compose.foundation.lazy.LazyColumn {
+                            items(albums) { album ->
+                                ListItem(
+                                    headlineContent = { Text(album.name) },
+                                    leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
+                                    modifier = Modifier.clickable { onAlbumSelected(album) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -116,6 +116,14 @@ class GalleryViewModel(
             toggleSelectionMode(false)
         }
     }
+
+    fun addSelectedPhotosToAlbum(albumId: Long) {
+        viewModelScope.launch {
+            val selected = _allPhotos.value.filter { _selectedPhotos.value.contains(it.id) }
+            repository.addPhotosToAlbum(albumId, selected)
+            toggleSelectionMode(false)
+        }
+    }
     
     fun deleteAlbum(album: AlbumEntity) {
         viewModelScope.launch {
