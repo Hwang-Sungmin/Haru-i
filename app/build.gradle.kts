@@ -72,6 +72,11 @@ dependencies {
     implementation(libs.mlkit.image.labeling)
     implementation(libs.kotlinx.coroutines.play.services)
     
+    // Retrofit (Network 통신)
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
