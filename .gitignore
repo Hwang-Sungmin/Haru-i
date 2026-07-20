@@ -13,3 +13,27 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# === Haru-i Custom Ignore Rules ===
+
+# 1. Python AI Server Sensitive Data (Personal Photos)
+server/app/models/reference_baby/*
+server/app/static/*
+# Keep directories but ignore content
+!server/app/models/reference_baby/.gitkeep
+!server/app/static/.gitkeep
+
+# 2. Python Environment & Cache
+server/venv/
+server/__pycache__/
+server/app/__pycache__/
+*.py[cod]
+
+# 3. Android Local Database Files (Private Records)
+*.db
+*.db-shm
+*.db-wal
+
+# 4. OS Specific Files
+.DS_Store
+Thumbs.db
