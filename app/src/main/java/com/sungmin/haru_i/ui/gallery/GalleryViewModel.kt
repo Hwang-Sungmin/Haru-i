@@ -1,11 +1,15 @@
 package com.sungmin.haru_i.ui.gallery
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sungmin.haru_i.data.BabyInfo
 import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.FaceDetectorHelper
 import com.sungmin.haru_i.data.PhotoRepository
+import com.sungmin.haru_i.data.local.AlbumEntity
+import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -14,12 +18,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-import com.sungmin.haru_i.data.local.AlbumEntity
 
 sealed class GalleryUiState {
     object Loading : GalleryUiState()
@@ -151,8 +156,37 @@ class GalleryViewModel(
         }
     }
 
-    fun updateBabyInfo(name: String, birthday: Long) {
-        babyManager.updateBabyInfo(name, birthday)
+    fun updateBabyInfo(name: String, birthday: Long, photoUri: Uri? = null, context: Context? = null) {
+        babyManager.updateBabyInfo(name, birthday, photoUri?.toString())
+        
+        // 서버에 아기 사진 등록
+        if (photoUri != null && context != null) {
+            viewModelScope.launch {
+                try {
+                    val file = getFileFromUri(context, photoUri)
+                    if (file != null) {
+                        val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                        val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                        RetrofitClient.apiService.registerBaby(body)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    private fun getFileFromUri(context: Context, uri: Uri): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File(context.cacheDir, "baby_reg_temp.jpg")
+            tempFile.outputStream().use { output ->
+                inputStream.copyTo(output)
+            }
+            tempFile
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun analyzeMonth(month: String, photos: List<Photo>) {

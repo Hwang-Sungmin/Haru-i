@@ -1,8 +1,10 @@
 package com.sungmin.haru_i.ui.gallery
 
 import android.Manifest
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -12,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
@@ -132,15 +135,17 @@ fun GalleryScreen(
             }
         }
     ) { paddingValues ->
+        val context = LocalContext.current
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             if (showSettingsDialog) {
                 val currentInfo = (uiState as? GalleryUiState.Success)?.babyInfo ?: BabyInfo()
                 BabySettingsDialog(
                     initialName = currentInfo.name,
                     initialBirthday = currentInfo.birthday,
+                    initialPhotoUri = currentInfo.referencePhotoUri,
                     onDismiss = { showSettingsDialog = false },
-                    onSave = { name, birthday ->
-                        viewModel.updateBabyInfo(name, birthday)
+                    onSave = { name, birthday, photoUri ->
+                        viewModel.updateBabyInfo(name, birthday, photoUri, context)
                         showSettingsDialog = false
                     }
                 )
@@ -283,82 +288,52 @@ fun BabyInfoBanner(babyInfo: BabyInfo) {
 }
 
 @Composable
-fun BabySettingsDialog(initialName: String, initialBirthday: Long, onDismiss: () -> Unit, onSave: (String, Long) -> Unit) {
+fun BabySettingsDialog(initialName: String, initialBirthday: Long, initialPhotoUri: String?, onDismiss: () -> Unit, onSave: (String, Long, Uri?) -> Unit) {
     var name by remember { mutableStateOf(initialName) }
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(initialPhotoUri?.let { Uri.parse(it) }) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) selectedPhotoUri = uri }
     val cal = Calendar.getInstance().apply { if (initialBirthday > 0) timeInMillis = initialBirthday }
     var year by remember { mutableStateOf(cal.get(Calendar.YEAR).toString()) }
     var month by remember { mutableStateOf((cal.get(Calendar.MONTH) + 1).toString()) }
     var day by remember { mutableStateOf(cal.get(Calendar.DAY_OF_MONTH).toString()) }
-
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("아기 정보 설정") },
+        onDismissRequest = onDismiss, title = { Text("아기 정보 설정") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("아기 이름") }, modifier = Modifier.fillMaxWidth())
-                Text("생년월일", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("년") }, modifier = Modifier.weight(1.5f))
-                    OutlinedTextField(value = month, onValueChange = { month = it }, label = { Text("월") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = day, onValueChange = { day = it }, label = { Text("일") }, modifier = Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(modifier = Modifier.size(100.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentAlignment = Alignment.Center) {
+                    if (selectedPhotoUri != null) AsyncImage(model = selectedPhotoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    else Icon(Icons.Default.AddAPhoto, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Text("정면 아기 사진을 등록해 주세요", style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterHorizontally))
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("아기 이름") }, modifier = Modifier.fillMaxWidth())
+                Text("생년월일", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("년") }, modifier = Modifier.weight(1.5f)); OutlinedTextField(value = month, onValueChange = { month = it }, label = { Text("월") }, modifier = Modifier.weight(1f)); OutlinedTextField(value = day, onValueChange = { day = it }, label = { Text("일") }, modifier = Modifier.weight(1f)) }
             }
         },
-        confirmButton = {
-            Button(onClick = {
-                val newCal = Calendar.getInstance().apply { set(year.toIntOrNull() ?: 2024, (month.toIntOrNull() ?: 1) - 1, day.toIntOrNull() ?: 1) }
-                onSave(name, newCal.timeInMillis)
-            }) { Text("저장") }
-        },
+        confirmButton = { Button(onClick = { val newCal = Calendar.getInstance().apply { set(year.toIntOrNull() ?: 2024, (month.toIntOrNull() ?: 1) - 1, day.toIntOrNull() ?: 1) }; onSave(name, newCal.timeInMillis, selectedPhotoUri) }) { Text("저장") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
     )
 }
 
 @Composable
-fun HighlightSection(
-    photos: List<Photo>,
-    albums: List<AlbumEntity>,
-    babyBirthday: Long,
-    selectionMode: Boolean,
-    selectedPhotos: Set<Long>,
-    onToggleFavorite: (Photo) -> Unit,
-    onUpdateMemo: (Photo, String) -> Unit,
-    onPhotoClick: (Photo) -> Unit,
-    onPhotoSelect: (Long) -> Unit,
-    onAlbumClick: (AlbumEntity) -> Unit,
-    onLongClick: (Photo) -> Unit
-) {
+fun HighlightSection(photos: List<Photo>, albums: List<AlbumEntity>, babyBirthday: Long, selectionMode: Boolean, selectedPhotos: Set<Long>, onToggleFavorite: (Photo) -> Unit, onUpdateMemo: (Photo, String) -> Unit, onPhotoClick: (Photo) -> Unit, onPhotoSelect: (Long) -> Unit, onAlbumClick: (AlbumEntity) -> Unit, onLongClick: (Photo) -> Unit) {
     var isExpanded by remember { mutableStateOf(true) }
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded }.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded }.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(text = "하이라이트 (성장 일기)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             Icon(imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null)
         }
-
         AnimatedVisibility(visible = isExpanded, enter = expandVertically(), exit = shrinkVertically()) {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(albums, key = { "album_${it.id}" }) { album ->
-                    AlbumFolderItem(album = album, photos = photos.filter { it.albumId == album.id }, onClick = { onAlbumClick(album) })
-                }
+                items(albums, key = { "album_${it.id}" }) { album -> AlbumFolderItem(album = album, photos = photos.filter { it.albumId == album.id }, onClick = { onAlbumClick(album) }) }
                 items(photos.filter { it.albumId == null }, key = { "photo_${it.id}" }) { photo ->
                     var showMemoDialog by remember { mutableStateOf(false) }
                     if (showMemoDialog) MemoDialog(photo = photo, onDismiss = { showMemoDialog = false }, onSave = { onUpdateMemo(photo, it) })
                     Column(modifier = Modifier.width(160.dp)) {
                         Box(modifier = Modifier.size(160.dp).clip(RoundedCornerShape(20.dp))) {
-                            val lines = photo.memo.split("\n")
-                            PhotoItem(
-                                photo = photo, babyBirthday = babyBirthday, selectionMode = selectionMode, isSelected = selectedPhotos.contains(photo.id),
-                                onToggleFavorite = onToggleFavorite, onClick = { if (selectionMode) onPhotoSelect(photo.id) else onPhotoClick(photo) },
-                                onLongClick = { onLongClick(photo) }, displayDate = if (lines.isNotEmpty() && lines[0].contains("일")) lines[0] else null
-                            )
+                            val lines = photo.memo.split("\n"); PhotoItem(photo = photo, babyBirthday = babyBirthday, selectionMode = selectionMode, isSelected = selectedPhotos.contains(photo.id), onToggleFavorite = onToggleFavorite, onClick = { if (selectionMode) onPhotoSelect(photo.id) else onPhotoClick(photo) }, onLongClick = { onLongClick(photo) }, displayDate = if (lines.isNotEmpty() && lines[0].contains("일")) lines[0] else null)
                         }
                         if (photo.memo.isNotEmpty()) {
-                            val lines = photo.memo.split("\n")
-                            val content = if (lines.size > 1) lines.drop(1).joinToString("\n").trim() else if (lines.isNotEmpty() && !lines[0].contains("일")) lines[0] else ""
+                            val lines = photo.memo.split("\n"); val content = if (lines.size > 1) lines.drop(1).joinToString("\n").trim() else if (lines.isNotEmpty() && !lines[0].contains("일")) lines[0] else ""
                             if (content.isNotEmpty()) Text(text = content, modifier = Modifier.padding(top = 8.dp, start = 4.dp).clickable { showMemoDialog = true }, style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = MaterialTheme.colorScheme.secondary), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         } else Text(text = "메모를 남겨보세요...", modifier = Modifier.padding(top = 8.dp, start = 4.dp).clickable { showMemoDialog = true }, style = MaterialTheme.typography.bodySmall.copy(color = Color.LightGray))
                     }
@@ -374,14 +349,8 @@ fun AlbumFolderItem(album: AlbumEntity, photos: List<Photo>, onClick: () -> Unit
     Column(modifier = Modifier.width(160.dp).clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier = Modifier.size(160.dp).background(Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(20.dp)).padding(8.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    AlbumPreviewImage(photos.getOrNull(0), Modifier.weight(1f))
-                    AlbumPreviewImage(photos.getOrNull(1), Modifier.weight(1f))
-                }
-                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    AlbumPreviewImage(photos.getOrNull(2), Modifier.weight(1f))
-                    AlbumPreviewImage(photos.getOrNull(3), Modifier.weight(1f))
-                }
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) { AlbumPreviewImage(photos.getOrNull(0), Modifier.weight(1f)); AlbumPreviewImage(photos.getOrNull(1), Modifier.weight(1f)) }
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) { AlbumPreviewImage(photos.getOrNull(2), Modifier.weight(1f)); AlbumPreviewImage(photos.getOrNull(3), Modifier.weight(1f)) }
             }
         }
         Text(text = album.name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(top = 8.dp), maxLines = 1)
@@ -399,12 +368,7 @@ fun AlbumPreviewImage(photo: Photo?, modifier: Modifier) {
 fun MemoDialog(photo: Photo, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     val defaultDate = DateUtils.formatDate(if (photo.dateTaken > 0) photo.dateTaken else photo.dateAdded * 1000L)
     var memo by remember { mutableStateOf(photo.memo.ifEmpty { "$defaultDate\n" }) }
-    AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("오늘의 기록") },
-        text = { OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("당시 상황이나 느낌을 적어주세요") }, modifier = Modifier.fillMaxWidth(), minLines = 3) },
-        confirmButton = { Button(onClick = { onSave(memo) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
-    )
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("오늘의 기록") }, text = { OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("당시 상황이나 느낌을 적어주세요") }, modifier = Modifier.fillMaxWidth(), minLines = 3) }, confirmButton = { Button(onClick = { onSave(memo) }) { Text("저장") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -422,9 +386,7 @@ fun TimelineGrid(state: LazyGridState, groupedPhotos: Map<String, List<Photo>>, 
                             Text(text = selectedMonth, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
                             Icon(imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
                         }
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            months.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { onMonthSelect(it); expanded = false }) }
-                        }
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { months.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { onMonthSelect(it); expanded = false }) } }
                     }
                     val isAnalyzing = analyzingMonths.contains(selectedMonth)
                     TextButton(onClick = { onAnalyzeMonth(selectedMonth, photosToShow) }, enabled = !isAnalyzing) {
@@ -469,50 +431,20 @@ fun PhotoItem(photo: Photo, babyBirthday: Long, onToggleFavorite: (Photo) -> Uni
 }
 
 @Composable
-fun AlbumSelectionDialog(
-    albums: List<AlbumEntity>,
-    onAlbumSelected: (AlbumEntity) -> Unit,
-    onCreateNewAlbum: () -> Unit,
-    onDismiss: () -> Unit
-) {
+fun AlbumSelectionDialog(albums: List<AlbumEntity>, onAlbumSelected: (AlbumEntity) -> Unit, onCreateNewAlbum: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("앨범 선택") },
+        onDismissRequest = onDismiss, title = { Text("앨범 선택") },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = onCreateNewAlbum,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("새 앨범 만들기")
-                    }
-                }
-                
+                TextButton(onClick = onCreateNewAlbum, modifier = Modifier.fillMaxWidth()) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("새 앨범 만들기") } }
                 if (albums.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     Text("기존 앨범에 추가", style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
-                    
-                    Box(modifier = Modifier.heightIn(max = 300.dp)) {
-                        androidx.compose.foundation.lazy.LazyColumn {
-                            items(albums) { album ->
-                                ListItem(
-                                    headlineContent = { Text(album.name) },
-                                    leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
-                                    modifier = Modifier.clickable { onAlbumSelected(album) }
-                                )
-                            }
-                        }
-                    }
+                    Box(modifier = Modifier.heightIn(max = 300.dp)) { LazyColumn { items(albums) { album -> ListItem(headlineContent = { Text(album.name) }, leadingContent = { Icon(Icons.Default.Folder, null) }, modifier = Modifier.clickable { onAlbumSelected(album) }) } } }
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
-        }
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
     )
 }
 
