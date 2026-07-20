@@ -11,12 +11,14 @@ import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AlbumEntity
 import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -65,6 +67,8 @@ class GalleryViewModel(
     
     private val _selectedPhotos = MutableStateFlow<Set<Long>>(emptySet())
     val selectedPhotos = _selectedPhotos.asStateFlow()
+    
+    private val analysisJobs = mutableMapOf<String, Job>()
     
     val babyInfo = babyManager.babyInfo
     val albums = repository.getAllAlbums()
@@ -190,24 +194,29 @@ class GalleryViewModel(
     }
 
     fun analyzeMonth(month: String, photos: List<Photo>, context: Context) {
-        if (_analyzingMonths.value.contains(month)) return
+        if (analysisJobs.containsKey(month)) {
+            // 이미 분석 중이면 중단
+            analysisJobs[month]?.cancel()
+            analysisJobs.remove(month)
+            _analyzingMonths.value = _analyzingMonths.value - month
+            return
+        }
 
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
             _analyzingMonths.value = _analyzingMonths.value + month
             
             val currentFiltered = _filteredPhotos.value.toMutableList()
             
-            photos.forEach { photo ->
+            for (photo in photos) {
+                if (!isActive) break // Job 취소 시 즉시 중단
+
                 if (currentFiltered.none { it.id == photo.id }) {
-                    // 1단계: 온디바이스 ML Kit 분석 (얼굴 유무 및 아기 여부)
                     if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                        
-                        // 2단계: 서버 정밀 분석 (등록된 우리 아기가 맞는지)
                         try {
                             val file = getFileFromUri(context, photo.uri)
                             if (file != null) {
                                 val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                                val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                                val body = MultipartBody.Part.createFormData("file", "photo.jpg", requestFile)
                                 val response = RetrofitClient.apiService.analyzePhoto(body)
                                 
                                 if (response.is_target_baby) {
@@ -216,8 +225,8 @@ class GalleryViewModel(
                                 }
                             }
                         } catch (e: Exception) {
-                            // 서버 통신 실패 시에는 1단계 결과만 믿고 추가하거나, 보수적으로 제외 가능
-                            // 여기서는 정밀 분석이 목표이므로 서버 응답 실패 시 일단 제외 처리
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            if (e.message?.contains("503") == true) break
                             e.printStackTrace()
                         }
                     }
@@ -225,7 +234,9 @@ class GalleryViewModel(
             }
             
             _analyzingMonths.value = _analyzingMonths.value - month
+            analysisJobs.remove(month)
         }
+        analysisJobs[month] = job
     }
 
     fun loadPhotos() {

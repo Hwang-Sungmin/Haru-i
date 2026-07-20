@@ -240,6 +240,7 @@ fun GalleryScreen(
                                 TimelineGrid(
                                     state = timelineGridState,
                                     groupedPhotos = state.groupedPhotos,
+                                    confirmedBabyIds = state.filteredPhotos.map { it.id }.toSet(),
                                     selectedMonth = state.selectedTimelineMonth,
                                     analyzingMonths = analyzingMonths,
                                     babyBirthday = state.babyInfo.birthday,
@@ -373,29 +374,115 @@ fun MemoDialog(photo: Photo, onDismiss: () -> Unit, onSave: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TimelineGrid(state: LazyGridState, groupedPhotos: Map<String, List<Photo>>, selectedMonth: String?, analyzingMonths: Set<String>, babyBirthday: Long, onToggleFavorite: (Photo) -> Unit, onAnalyzeMonth: (String, List<Photo>) -> Unit, onPhotoClick: (Photo) -> Unit, onMonthSelect: (String) -> Unit) {
+fun TimelineGrid(
+    state: LazyGridState,
+    groupedPhotos: Map<String, List<Photo>>,
+    confirmedBabyIds: Set<Long>,
+    selectedMonth: String?,
+    analyzingMonths: Set<String>,
+    babyBirthday: Long,
+    onToggleFavorite: (Photo) -> Unit,
+    onAnalyzeMonth: (String, List<Photo>) -> Unit,
+    onPhotoClick: (Photo) -> Unit,
+    onMonthSelect: (String) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     val months = groupedPhotos.keys.toList()
-    LazyVerticalGrid(state = state, columns = GridCells.Fixed(3), contentPadding = PaddingValues(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+
+    LazyVerticalGrid(
+        state = state,
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
         val photosToShow = selectedMonth?.let { groupedPhotos[it] } ?: emptyList()
+        
         if (selectedMonth != null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }, modifier = Modifier.wrapContentWidth()) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).clickable { expanded = true }.padding(vertical = 4.dp)) {
-                            Text(text = selectedMonth, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary))
-                            Icon(imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 통합된 월 선택 셀렉터
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded },
+                        modifier = Modifier.wrapContentWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .clickable { expanded = true }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = selectedMonth,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                            Icon(
+                                imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
                         }
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { months.forEach { DropdownMenuItem(text = { Text(it) }, onClick = { onMonthSelect(it); expanded = false }) } }
+
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            months.forEach { month ->
+                                DropdownMenuItem(
+                                    text = { Text(month) },
+                                    onClick = {
+                                        onMonthSelect(month)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
+                    
                     val isAnalyzing = analyzingMonths.contains(selectedMonth)
-                    TextButton(onClick = { onAnalyzeMonth(selectedMonth, photosToShow) }, enabled = !isAnalyzing) {
-                        if (isAnalyzing) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        else { Icon(Icons.Default.Face, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("아기 사진 찾기", style = MaterialTheme.typography.labelMedium) }
+                    TextButton(
+                        onClick = { onAnalyzeMonth(selectedMonth, photosToShow) },
+                        enabled = true
+                    ) {
+                        if (isAnalyzing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("분석 중 (중단)", style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Face,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("아기 사진 찾기", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }
-            items(photosToShow, key = { it.id }) { PhotoItem(photo = it, babyBirthday = babyBirthday, onToggleFavorite = onToggleFavorite, onClick = { onPhotoClick(it) }) }
+            
+            items(photosToShow, key = { it.id }) { photo ->
+                PhotoItem(
+                    photo = photo, 
+                    babyBirthday = babyBirthday, 
+                    isBabyConfirmed = confirmedBabyIds.contains(photo.id),
+                    onToggleFavorite = onToggleFavorite,
+                    onClick = { onPhotoClick(photo) }
+                )
+            }
         }
     }
 }
@@ -409,9 +496,33 @@ fun PhotoGrid(state: LazyGridState, photos: List<Photo>, babyBirthday: Long, onT
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PhotoItem(photo: Photo, babyBirthday: Long, onToggleFavorite: (Photo) -> Unit, onClick: () -> Unit, onLongClick: () -> Unit = {}, selectionMode: Boolean = false, isSelected: Boolean = false, displayDate: String? = null) {
+fun PhotoItem(
+    photo: Photo,
+    babyBirthday: Long,
+    onToggleFavorite: (Photo) -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    isBabyConfirmed: Boolean = false,
+    displayDate: String? = null
+) {
     Box(modifier = Modifier.aspectRatio(1f).fillMaxWidth().clip(RoundedCornerShape(8.dp)).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(photo.uri).crossfade(true).build(), contentDescription = null, modifier = Modifier.fillMaxSize().graphicsLayer(alpha = if (selectionMode && !isSelected) 0.5f else 1f), contentScale = ContentScale.Crop)
+        
+        // Baby Confirmation Badge
+        if (isBabyConfirmed) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .background(Color.White.copy(alpha = 0.7f), CircleShape)
+                    .padding(2.dp)
+            ) {
+                Text("👶", fontSize = 12.sp)
+            }
+        }
+
         if (selectionMode) {
             Box(modifier = Modifier.fillMaxSize().background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent))
             Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.align(Alignment.TopStart), colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary))
