@@ -189,7 +189,7 @@ class GalleryViewModel(
         }
     }
 
-    fun analyzeMonth(month: String, photos: List<Photo>) {
+    fun analyzeMonth(month: String, photos: List<Photo>, context: Context) {
         if (_analyzingMonths.value.contains(month)) return
 
         viewModelScope.launch {
@@ -199,9 +199,27 @@ class GalleryViewModel(
             
             photos.forEach { photo ->
                 if (currentFiltered.none { it.id == photo.id }) {
+                    // 1단계: 온디바이스 ML Kit 분석 (얼굴 유무 및 아기 여부)
                     if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                        currentFiltered.add(photo.copy())
-                        _filteredPhotos.value = currentFiltered.toList()
+                        
+                        // 2단계: 서버 정밀 분석 (등록된 우리 아기가 맞는지)
+                        try {
+                            val file = getFileFromUri(context, photo.uri)
+                            if (file != null) {
+                                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                                val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+                                val response = RetrofitClient.apiService.analyzePhoto(body)
+                                
+                                if (response.is_target_baby) {
+                                    currentFiltered.add(photo.copy())
+                                    _filteredPhotos.value = currentFiltered.toList()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // 서버 통신 실패 시에는 1단계 결과만 믿고 추가하거나, 보수적으로 제외 가능
+                            // 여기서는 정밀 분석이 목표이므로 서버 응답 실패 시 일단 제외 처리
+                            e.printStackTrace()
+                        }
                     }
                 }
             }

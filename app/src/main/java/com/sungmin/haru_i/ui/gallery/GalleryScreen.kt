@@ -244,7 +244,7 @@ fun GalleryScreen(
                                     analyzingMonths = analyzingMonths,
                                     babyBirthday = state.babyInfo.birthday,
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
-                                    onAnalyzeMonth = { month, p -> viewModel.analyzeMonth(month, p) },
+                                    onAnalyzeMonth = { month, p -> viewModel.analyzeMonth(month, p, context) },
                                     onPhotoClick = { selectedPhotoForDetail = it },
                                     onMonthSelect = { viewModel.selectTimelineMonth(it) }
                                 )
