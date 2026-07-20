@@ -22,17 +22,17 @@ os.makedirs(REFERENCE_DIR, exist_ok=True)
 
 @app.get("/")
 async def root():
-    return {"message": "Haru-i AI Server is running"}
+    return {"status": "online", "message": "Haru-i AI Server is running"}
 
 @app.post("/register")
 async def register_baby(file: UploadFile = File(...)):
     """
     Register the target baby's face.
-    This will be used as a reference for all future scans.
     """
     file_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    print(f"[+] Successfully registered new reference baby face: {file.filename}")
     return {"status": "success", "message": "Baby face registered successfully"}
 
 @app.post("/analyze")
@@ -42,12 +42,15 @@ async def analyze_photo(file: UploadFile = File(...)):
     """
     ref_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
     if not os.path.exists(ref_path):
+        print("[-] Error: Reference baby face not registered")
         raise HTTPException(status_code=400, detail="Reference baby face not registered")
 
     # Temporary save uploaded photo
     temp_path = os.path.join(BASE_DIR, "static", f"temp_{file.filename}")
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    print(f"[*] Analyzing photo: {file.filename}...")
 
     try:
         # Perform Face Verification
@@ -60,16 +63,24 @@ async def analyze_photo(file: UploadFile = File(...)):
             enforce_detection = False
         )
 
+        is_verified = bool(result["verified"])
+        distance = float(result["distance"])
+
+        # Enhanced Logging for Verification
+        status_msg = "[+]" if is_verified else "[-]"
+        print(f"{status_msg} Result: {'MATCH' if is_verified else 'NO MATCH'} (Distance: {distance:.4f}, Threshold: {result['threshold']})")
+
         # Cleanup
         os.remove(temp_path)
 
         return {
-            "is_target_baby": bool(result["verified"]),
-            "distance": float(result["distance"]),
+            "is_target_baby": is_verified,
+            "distance": distance,
             "threshold": float(result["threshold"])
         }
 
     except Exception as e:
+        print(f"[-] AI Analysis Error: {str(e)}")
         if os.path.exists(temp_path):
             os.remove(temp_path)
         return {"status": "error", "message": str(e)}
