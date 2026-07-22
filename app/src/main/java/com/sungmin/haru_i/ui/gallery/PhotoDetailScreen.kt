@@ -109,7 +109,20 @@ fun PhotoDetailScreen(
                         navigationIconContentColor = Color.White,
                         actionIconContentColor = Color.White
                     ),
-                    title = { Text(photo.name, style = MaterialTheme.typography.bodySmall) },
+                    title = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(photo.name, style = MaterialTheme.typography.bodySmall)
+                            if (photo.aiCaption != null || photo.emotion != null) {
+                                Text(
+                                    text = "${photo.emotion ?: ""} ${photo.aiCaption ?: ""}".trim(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "닫기")

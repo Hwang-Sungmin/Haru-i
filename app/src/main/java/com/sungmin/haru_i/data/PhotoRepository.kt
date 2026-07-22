@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import com.sungmin.haru_i.data.local.AlbumEntity
 import com.sungmin.haru_i.data.local.PhotoDao
 import com.sungmin.haru_i.data.local.PhotoMeta
+import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
 
 class PhotoRepository(
     private val context: Context,
@@ -29,7 +34,9 @@ class PhotoRepository(
             photo.copy(
                 isFavorite = meta?.isFavorite ?: false,
                 memo = meta?.memo ?: "",
-                albumId = meta?.albumId
+                albumId = meta?.albumId,
+                aiCaption = meta?.aiCaption,
+                emotion = meta?.emotion
             )
         }
     }.flowOn(Dispatchers.IO)
@@ -112,5 +119,46 @@ class PhotoRepository(
             existingMeta?.copy(memo = memo)
                 ?: PhotoMeta(uri = photo.uri.toString(), memo = memo)
         )
+    }
+
+    suspend fun updateAiAnalysis(photo: Photo, caption: String?, emotion: String?) {
+        val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
+        photoDao.insertMeta(
+            existingMeta?.copy(aiCaption = caption, emotion = emotion)
+                ?: PhotoMeta(uri = photo.uri.toString(), aiCaption = caption, emotion = emotion)
+        )
+    }
+
+    suspend fun describePhoto(photo: Photo): com.sungmin.haru_i.data.remote.DescribeResponse? {
+        return try {
+            val file = getFileFromUri(photo.uri) ?: return null
+            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+            
+            val response = RetrofitClient.apiService.describePhoto(body)
+            
+            // 분석 결과 저장
+            if (response.caption != null || response.emotion != null) {
+                updateAiAnalysis(photo, response.caption, response.emotion)
+            }
+            
+            response
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun getFileFromUri(uri: android.net.Uri): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File(context.cacheDir, "temp_describe_${System.currentTimeMillis()}.jpg")
+            tempFile.outputStream().use { output ->
+                inputStream.copyTo(output)
+            }
+            tempFile
+        } catch (e: Exception) {
+            null
+        }
     }
 }

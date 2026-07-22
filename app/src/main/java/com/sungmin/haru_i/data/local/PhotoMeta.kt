@@ -8,5 +8,7 @@ data class PhotoMeta(
     @PrimaryKey val uri: String,
     val isFavorite: Boolean = false,
     val memo: String = "",
-    val albumId: Long? = null // 소속된 앨범 ID 추가
+    val albumId: Long? = null, // 소속된 앨범 ID 추가
+    val aiCaption: String? = null,
+    val emotion: String? = null
 )

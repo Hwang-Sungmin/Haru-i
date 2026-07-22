@@ -51,6 +51,7 @@ fun GalleryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val analyzingMonths by viewModel.analyzingMonths.collectAsState()
+    val isAnalyzingJournal by viewModel.isAnalyzingJournal.collectAsState()
     val selectionMode by viewModel.selectionMode.collectAsState()
     val selectedPhotos by viewModel.selectedPhotos.collectAsState()
     
@@ -219,6 +220,7 @@ fun GalleryScreen(
                             babyBirthday = state.babyInfo.birthday,
                             selectionMode = selectionMode,
                             selectedPhotos = selectedPhotos,
+                            isAnalyzingJournal = isAnalyzingJournal,
                             onToggleFavorite = { viewModel.toggleFavorite(it) },
                             onUpdateMemo = { photo, memo -> viewModel.updateMemo(photo, memo) },
                             onPhotoClick = { selectedPhotoForDetail = it },
@@ -227,7 +229,8 @@ fun GalleryScreen(
                             onLongClick = { 
                                 viewModel.toggleSelectionMode(true)
                                 viewModel.togglePhotoSelection(it.id)
-                            }
+                            },
+                            onGenerateAiCaption = { viewModel.generateSmartJournal(it) }
                         )
                         
                         val photos = if (state.selectedTab == 0) state.allPhotos else state.filteredPhotos
@@ -316,7 +319,21 @@ fun BabySettingsDialog(initialName: String, initialBirthday: Long, initialPhotoU
 }
 
 @Composable
-fun HighlightSection(photos: List<Photo>, albums: List<AlbumEntity>, babyBirthday: Long, selectionMode: Boolean, selectedPhotos: Set<Long>, onToggleFavorite: (Photo) -> Unit, onUpdateMemo: (Photo, String) -> Unit, onPhotoClick: (Photo) -> Unit, onPhotoSelect: (Long) -> Unit, onAlbumClick: (AlbumEntity) -> Unit, onLongClick: (Photo) -> Unit) {
+fun HighlightSection(
+    photos: List<Photo>,
+    albums: List<AlbumEntity>,
+    babyBirthday: Long,
+    selectionMode: Boolean,
+    selectedPhotos: Set<Long>,
+    isAnalyzingJournal: Set<Long>,
+    onToggleFavorite: (Photo) -> Unit,
+    onUpdateMemo: (Photo, String) -> Unit,
+    onPhotoClick: (Photo) -> Unit,
+    onPhotoSelect: (Long) -> Unit,
+    onAlbumClick: (AlbumEntity) -> Unit,
+    onLongClick: (Photo) -> Unit,
+    onGenerateAiCaption: (Photo) -> Unit
+) {
     var isExpanded by remember { mutableStateOf(true) }
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded }.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -328,7 +345,15 @@ fun HighlightSection(photos: List<Photo>, albums: List<AlbumEntity>, babyBirthda
                 items(albums, key = { "album_${it.id}" }) { album -> AlbumFolderItem(album = album, photos = photos.filter { it.albumId == album.id }, onClick = { onAlbumClick(album) }) }
                 items(photos.filter { it.albumId == null }, key = { "photo_${it.id}" }) { photo ->
                     var showMemoDialog by remember { mutableStateOf(false) }
-                    if (showMemoDialog) MemoDialog(photo = photo, onDismiss = { showMemoDialog = false }, onSave = { onUpdateMemo(photo, it) })
+                    if (showMemoDialog) {
+                        MemoDialog(
+                            photo = photo,
+                            isAnalyzing = isAnalyzingJournal.contains(photo.id),
+                            onDismiss = { showMemoDialog = false },
+                            onSave = { onUpdateMemo(photo, it) },
+                            onGenerateAiCaption = { onGenerateAiCaption(photo) }
+                        )
+                    }
                     Column(modifier = Modifier.width(160.dp)) {
                         Box(modifier = Modifier.size(160.dp).clip(RoundedCornerShape(20.dp))) {
                             val lines = photo.memo.split("\n"); PhotoItem(photo = photo, babyBirthday = babyBirthday, selectionMode = selectionMode, isSelected = selectedPhotos.contains(photo.id), onToggleFavorite = onToggleFavorite, onClick = { if (selectionMode) onPhotoSelect(photo.id) else onPhotoClick(photo) }, onLongClick = { onLongClick(photo) }, displayDate = if (lines.isNotEmpty() && lines[0].contains("일")) lines[0] else null)
@@ -366,10 +391,94 @@ fun AlbumPreviewImage(photo: Photo?, modifier: Modifier) {
 }
 
 @Composable
-fun MemoDialog(photo: Photo, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+fun MemoDialog(
+    photo: Photo,
+    isAnalyzing: Boolean = false,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onGenerateAiCaption: () -> Unit = {}
+) {
     val defaultDate = DateUtils.formatDate(if (photo.dateTaken > 0) photo.dateTaken else photo.dateAdded * 1000L)
     var memo by remember { mutableStateOf(photo.memo.ifEmpty { "$defaultDate\n" }) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("오늘의 기록") }, text = { OutlinedTextField(value = memo, onValueChange = { memo = it }, label = { Text("당시 상황이나 느낌을 적어주세요") }, modifier = Modifier.fillMaxWidth(), minLines = 3) }, confirmButton = { Button(onClick = { onSave(memo) }) { Text("저장") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } })
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("오늘의 기록")
+                TextButton(
+                    onClick = onGenerateAiCaption,
+                    enabled = !isAnalyzing
+                ) {
+                    if (isAnalyzing) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("AI 추천", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (photo.aiCaption != null || photo.emotion != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = when (photo.emotion?.lowercase()) {
+                                        "happy" -> "😊 행복해요"
+                                        "sad" -> "😢 슬퍼요"
+                                        "angry" -> "😠 화나요"
+                                        "surprised" -> "😲 놀랐어요"
+                                        "neutral" -> "😐 평온해요"
+                                        "sleepy" -> "😴 졸려요"
+                                        else -> "✨ 분석됨"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    val aiText = "${photo.aiCaption ?: ""} ${photo.emotion ?: ""}".trim()
+                                    if (aiText.isNotEmpty()) {
+                                        memo = if (memo.endsWith("\n")) memo + aiText else memo + "\n" + aiText
+                                    }
+                                }) {
+                                    Text("메모에 넣기", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (photo.aiCaption != null) {
+                                Text(
+                                    text = photo.aiCaption,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = memo,
+                    onValueChange = { memo = it },
+                    label = { Text("당시 상황이나 느낌을 적어주세요") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(memo) }) { Text("저장") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -520,6 +629,30 @@ fun PhotoItem(
                     .padding(2.dp)
             ) {
                 Text("👶", fontSize = 12.sp)
+            }
+        }
+
+        // Emotion Badge
+        if (photo.emotion != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .padding(2.dp)
+            ) {
+                Text(
+                    text = when (photo.emotion.lowercase()) {
+                        "happy" -> "😊"
+                        "sad" -> "😢"
+                        "angry" -> "😠"
+                        "surprised" -> "😲"
+                        "neutral" -> "😐"
+                        "sleepy" -> "😴"
+                        else -> "✨"
+                    },
+                    fontSize = 10.sp
+                )
             }
         }
 

@@ -10,5 +10,7 @@ data class Photo(
     val isFavorite: Boolean = false,
     val memo: String = "",
     val dateTaken: Long = 0L,
-    val albumId: Long? = null
+    val albumId: Long? = null,
+    val aiCaption: String? = null,
+    val emotion: String? = null
 )

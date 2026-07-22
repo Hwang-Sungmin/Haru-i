@@ -18,6 +18,13 @@ data class AnalyzeResponse(
     val message: String? = null
 )
 
+data class DescribeResponse(
+    val caption: String? = null,
+    val emotion: String? = null,
+    val status: String? = null,
+    val message: String? = null
+)
+
 interface ApiService {
     @Multipart
     @POST("/register")
@@ -30,4 +37,10 @@ interface ApiService {
     suspend fun analyzePhoto(
         @Part file: MultipartBody.Part
     ): AnalyzeResponse
+
+    @Multipart
+    @POST("/describe")
+    suspend fun describePhoto(
+        @Part file: MultipartBody.Part
+    ): DescribeResponse
 }

@@ -32,4 +32,7 @@ interface PhotoDao {
 
     @Query("SELECT * FROM photo_meta WHERE albumId = :albumId")
     fun getPhotosInAlbum(albumId: Long): Flow<List<PhotoMeta>>
+
+    @Query("UPDATE photo_meta SET aiCaption = :caption, emotion = :emotion WHERE uri = :uri")
+    suspend fun updateAiAnalysis(uri: String, caption: String?, emotion: String?)
 }

@@ -58,6 +58,9 @@ class GalleryViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     private val _analyzingMonths = MutableStateFlow<Set<String>>(emptySet())
     val analyzingMonths = _analyzingMonths.asStateFlow()
+
+    private val _isAnalyzingJournal = MutableStateFlow<Set<Long>>(emptySet())
+    val isAnalyzingJournal = _isAnalyzingJournal.asStateFlow()
     
     private val _selectedTimelineMonth = MutableStateFlow<String?>(null)
     val selectedTimelineMonth = _selectedTimelineMonth.asStateFlow()
@@ -157,6 +160,19 @@ class GalleryViewModel(
     fun updateMemo(photo: Photo, memo: String) {
         viewModelScope.launch {
             repository.updateMemo(photo, memo)
+        }
+    }
+
+    fun generateSmartJournal(photo: Photo) {
+        viewModelScope.launch {
+            if (_isAnalyzingJournal.value.contains(photo.id)) return@launch
+            
+            _isAnalyzingJournal.value = _isAnalyzingJournal.value + photo.id
+            try {
+                repository.describePhoto(photo)
+            } finally {
+                _isAnalyzingJournal.value = _isAnalyzingJournal.value - photo.id
+            }
         }
     }
 
