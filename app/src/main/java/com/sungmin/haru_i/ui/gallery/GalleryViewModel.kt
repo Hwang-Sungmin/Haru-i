@@ -3,7 +3,10 @@ package com.sungmin.haru_i.ui.gallery
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.sungmin.haru_i.data.BabyInfo
 import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.FaceDetectorHelper
@@ -11,14 +14,13 @@ import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AlbumEntity
 import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -32,14 +34,15 @@ sealed class GalleryUiState {
     object Loading : GalleryUiState()
     data class Success(
         val allPhotos: List<Photo>,
-        val filteredPhotos: List<Photo>,
         val groupedPhotos: Map<String, List<Photo>>,
         val favoritePhotos: List<Photo>,
         val albums: List<AlbumEntity> = emptyList(),
         val selectedTab: Int = 0,
         val babyInfo: BabyInfo = BabyInfo(),
         val selectedTimelineMonth: String? = null
-    ) : GalleryUiState()
+    ) : GalleryUiState() {
+        val filteredPhotos: List<Photo> = allPhotos.filter { it.isBaby }
+    }
     data class Error(val message: String) : GalleryUiState()
 }
 
@@ -50,17 +53,30 @@ class GalleryViewModel(
 ) : ViewModel() {
 
     private val _allPhotos = MutableStateFlow<List<Photo>>(emptyList())
-    private val _filteredPhotos = MutableStateFlow<List<Photo>>(emptyList())
     private val _favoritePhotos = MutableStateFlow<List<Photo>>(emptyList())
     private val _groupedPhotos = MutableStateFlow<Map<String, List<Photo>>>(emptyMap())
     private val _selectedTab = MutableStateFlow(0)
     private val _isLoading = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
-    private val _analyzingMonths = MutableStateFlow<Set<String>>(emptySet())
-    val analyzingMonths = _analyzingMonths.asStateFlow()
+    
+    // WorkManager를 통한 상태 추적 (실제 UI 반영용)
+    val analyzingMonths: StateFlow<Set<String>> = repository.getWorkManager()
+        .getWorkInfosByTagFlow("analysis_task")
+        .map { workInfos ->
+            workInfos.filter { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+                .mapNotNull { info -> 
+                    info.tags.find { it.startsWith("analysis_") && it != "analysis_task" }?.removePrefix("analysis_")
+                }.toSet()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    private val _isAnalyzingJournal = MutableStateFlow<Set<Long>>(emptySet())
-    val isAnalyzingJournal = _isAnalyzingJournal.asStateFlow()
+    val isAnalyzingJournal: StateFlow<Set<Long>> = repository.getWorkManager()
+        .getWorkInfosByTagFlow("journal_task")
+        .map { workInfos ->
+            workInfos.filter { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+                .mapNotNull { info ->
+                    info.tags.find { it.startsWith("journal_") && it != "journal_task" }?.removePrefix("journal_")?.toLongOrNull()
+                }.toSet()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     
     private val _selectedTimelineMonth = MutableStateFlow<String?>(null)
     val selectedTimelineMonth = _selectedTimelineMonth.asStateFlow()
@@ -71,36 +87,31 @@ class GalleryViewModel(
     private val _selectedPhotos = MutableStateFlow<Set<Long>>(emptySet())
     val selectedPhotos = _selectedPhotos.asStateFlow()
     
-    private val analysisJobs = mutableMapOf<String, Job>()
-    
     val babyInfo = babyManager.babyInfo
     val albums = repository.getAllAlbums()
 
     val uiState: StateFlow<GalleryUiState> = combine(
-        _allPhotos, _filteredPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo, _selectedTimelineMonth, albums
+        _allPhotos, _groupedPhotos, _favoritePhotos, _selectedTab, _isLoading, _errorMessage, babyInfo, _selectedTimelineMonth, albums
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val all = args[0] as List<Photo>
         @Suppress("UNCHECKED_CAST")
-        val filtered = args[1] as List<Photo>
+        val grouped = args[1] as Map<String, List<Photo>>
         @Suppress("UNCHECKED_CAST")
-        val grouped = args[2] as Map<String, List<Photo>>
+        val favorites = args[2] as List<Photo>
+        val tab = args[3] as Int
+        val loading = args[4] as Boolean
+        val error = args[5] as String?
+        val baby = args[6] as BabyInfo
+        val selectedMonth = args[7] as String?
         @Suppress("UNCHECKED_CAST")
-        val favorites = args[3] as List<Photo>
-        val tab = args[4] as Int
-        val loading = args[5] as Boolean
-        val error = args[6] as String?
-        val baby = args[7] as BabyInfo
-        val selectedMonth = args[8] as String?
-        @Suppress("UNCHECKED_CAST")
-        val albumList = args[9] as List<AlbumEntity>
+        val albumList = args[8] as List<AlbumEntity>
 
         when {
             error != null -> GalleryUiState.Error(error)
             loading && all.isEmpty() -> GalleryUiState.Loading
             else -> GalleryUiState.Success(
                 allPhotos = all,
-                filteredPhotos = filtered,
                 groupedPhotos = grouped,
                 favoritePhotos = favorites,
                 albums = albumList,
@@ -164,22 +175,12 @@ class GalleryViewModel(
     }
 
     fun generateSmartJournal(photo: Photo) {
-        viewModelScope.launch {
-            if (_isAnalyzingJournal.value.contains(photo.id)) return@launch
-            
-            _isAnalyzingJournal.value = _isAnalyzingJournal.value + photo.id
-            try {
-                repository.describePhoto(photo)
-            } finally {
-                _isAnalyzingJournal.value = _isAnalyzingJournal.value - photo.id
-            }
-        }
+        repository.generateSmartJournalInBackground(photo)
     }
 
     fun updateBabyInfo(name: String, birthday: Long, photoUri: Uri? = null, context: Context? = null) {
         babyManager.updateBabyInfo(name, birthday, photoUri?.toString())
         
-        // 서버에 아기 사진 등록
         if (photoUri != null && context != null) {
             viewModelScope.launch {
                 try {
@@ -210,49 +211,7 @@ class GalleryViewModel(
     }
 
     fun analyzeMonth(month: String, photos: List<Photo>, context: Context) {
-        if (analysisJobs.containsKey(month)) {
-            // 이미 분석 중이면 중단
-            analysisJobs[month]?.cancel()
-            analysisJobs.remove(month)
-            _analyzingMonths.value = _analyzingMonths.value - month
-            return
-        }
-
-        val job = viewModelScope.launch {
-            _analyzingMonths.value = _analyzingMonths.value + month
-            
-            val currentFiltered = _filteredPhotos.value.toMutableList()
-            
-            for (photo in photos) {
-                if (!isActive) break // Job 취소 시 즉시 중단
-
-                if (currentFiltered.none { it.id == photo.id }) {
-                    if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                        try {
-                            val file = getFileFromUri(context, photo.uri)
-                            if (file != null) {
-                                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                                val body = MultipartBody.Part.createFormData("file", "photo.jpg", requestFile)
-                                val response = RetrofitClient.apiService.analyzePhoto(body)
-                                
-                                if (response.is_target_baby) {
-                                    currentFiltered.add(photo.copy())
-                                    _filteredPhotos.value = currentFiltered.toList()
-                                }
-                            }
-                        } catch (e: Exception) {
-                            if (e is kotlinx.coroutines.CancellationException) throw e
-                            if (e.message?.contains("503") == true) break
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            }
-            
-            _analyzingMonths.value = _analyzingMonths.value - month
-            analysisJobs.remove(month)
-        }
-        analysisJobs[month] = job
+        repository.analyzeMonthInBackground(month)
     }
 
     fun loadPhotos() {
@@ -266,7 +225,6 @@ class GalleryViewModel(
                     val grouped = groupPhotosByMonth(photos)
                     _groupedPhotos.value = grouped
                     
-                    // Set default month if not selected
                     if (_selectedTimelineMonth.value == null && grouped.isNotEmpty()) {
                         _selectedTimelineMonth.value = grouped.keys.first()
                     }
@@ -286,4 +244,8 @@ class GalleryViewModel(
             dateFormat.format(Date(photo.dateAdded * 1000L))
         }
     }
+    
+    // WorkManager Flow helper
+    private fun WorkManager.getWorkInfosByTagFlow(tagPrefix: String) = 
+        getWorkInfosByTagLiveData(tagPrefix).asFlow()
 }

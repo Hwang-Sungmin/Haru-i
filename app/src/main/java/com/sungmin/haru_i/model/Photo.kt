@@ -12,5 +12,6 @@ data class Photo(
     val dateTaken: Long = 0L,
     val albumId: Long? = null,
     val aiCaption: String? = null,
-    val emotion: String? = null
+    val emotion: String? = null,
+    val isBaby: Boolean = false
 )

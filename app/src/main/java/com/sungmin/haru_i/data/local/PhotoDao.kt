@@ -35,4 +35,7 @@ interface PhotoDao {
 
     @Query("UPDATE photo_meta SET aiCaption = :caption, emotion = :emotion WHERE uri = :uri")
     suspend fun updateAiAnalysis(uri: String, caption: String?, emotion: String?)
+
+    @Query("UPDATE photo_meta SET isBaby = :isBaby WHERE uri = :uri")
+    suspend fun updateBabyStatus(uri: String, isBaby: Boolean)
 }

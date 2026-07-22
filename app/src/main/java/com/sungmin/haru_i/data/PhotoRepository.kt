@@ -8,12 +8,15 @@ import com.sungmin.haru_i.data.local.PhotoDao
 import com.sungmin.haru_i.data.local.PhotoMeta
 import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
+import com.sungmin.haru_i.worker.PhotoAnalysisWorker
+import com.sungmin.haru_i.worker.SmartJournalWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import androidx.work.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -23,6 +26,40 @@ class PhotoRepository(
     private val context: Context,
     private val photoDao: PhotoDao
 ) {
+    private val workManager = WorkManager.getInstance(context)
+
+    fun getWorkManager() = workManager
+
+    fun analyzeMonthInBackground(month: String) {
+        val inputData = workDataOf("month" to month)
+        val request = OneTimeWorkRequestBuilder<PhotoAnalysisWorker>()
+            .setInputData(inputData)
+            .addTag("analysis_task")
+            .addTag("analysis_\$month")
+            .build()
+        workManager.enqueueUniqueWork(
+            "analysis_\$month",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
+
+    fun generateSmartJournalInBackground(photo: Photo) {
+        val inputData = workDataOf(
+            "photoUri" to photo.uri.toString(),
+            "photoId" to photo.id
+        )
+        val request = OneTimeWorkRequestBuilder<SmartJournalWorker>()
+            .setInputData(inputData)
+            .addTag("journal_task")
+            .addTag("journal_\${photo.id}")
+            .build()
+        workManager.enqueueUniqueWork(
+            "journal_\${photo.id}",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
 
     fun getPhotos(): Flow<List<Photo>> = combine(
         getMediaStorePhotos(),
@@ -36,7 +73,8 @@ class PhotoRepository(
                 memo = meta?.memo ?: "",
                 albumId = meta?.albumId,
                 aiCaption = meta?.aiCaption,
-                emotion = meta?.emotion
+                emotion = meta?.emotion,
+                isBaby = meta?.isBaby ?: false
             )
         }
     }.flowOn(Dispatchers.IO)
@@ -126,6 +164,14 @@ class PhotoRepository(
         photoDao.insertMeta(
             existingMeta?.copy(aiCaption = caption, emotion = emotion)
                 ?: PhotoMeta(uri = photo.uri.toString(), aiCaption = caption, emotion = emotion)
+        )
+    }
+
+    suspend fun updateBabyStatus(photo: Photo, isBaby: Boolean) {
+        val existingMeta = photoDao.getMetaByUri(photo.uri.toString())
+        photoDao.insertMeta(
+            existingMeta?.copy(isBaby = isBaby)
+                ?: PhotoMeta(uri = photo.uri.toString(), isBaby = isBaby)
         )
     }
 

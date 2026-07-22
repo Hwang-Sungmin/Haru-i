@@ -10,5 +10,6 @@ data class PhotoMeta(
     val memo: String = "",
     val albumId: Long? = null, // 소속된 앨범 ID 추가
     val aiCaption: String? = null,
-    val emotion: String? = null
+    val emotion: String? = null,
+    val isBaby: Boolean = false
 )
