@@ -140,10 +140,12 @@ fun GalleryScreen(
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             if (showSettingsDialog) {
                 val currentInfo = (uiState as? GalleryUiState.Success)?.babyInfo ?: BabyInfo()
+                val allPhotos = (uiState as? GalleryUiState.Success)?.allPhotos ?: emptyList()
                 BabySettingsDialog(
                     initialName = currentInfo.name,
                     initialBirthday = currentInfo.birthday,
                     initialPhotoUri = currentInfo.referencePhotoUri,
+                    allPhotos = allPhotos,
                     onDismiss = { showSettingsDialog = false },
                     onSave = { name, birthday, photoUri ->
                         viewModel.updateBabyInfo(name, birthday, photoUri, context)
@@ -291,31 +293,181 @@ fun BabyInfoBanner(babyInfo: BabyInfo) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BabySettingsDialog(initialName: String, initialBirthday: Long, initialPhotoUri: String?, onDismiss: () -> Unit, onSave: (String, Long, Uri?) -> Unit) {
+fun BabySettingsDialog(
+    initialName: String,
+    initialBirthday: Long,
+    initialPhotoUri: String?,
+    allPhotos: List<Photo>,
+    onDismiss: () -> Unit,
+    onSave: (String, Long, Uri?) -> Unit
+) {
     var name by remember { mutableStateOf(initialName) }
     var selectedPhotoUri by remember { mutableStateOf<Uri?>(initialPhotoUri?.let { Uri.parse(it) }) }
-    val photoPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) selectedPhotoUri = uri }
-    val cal = Calendar.getInstance().apply { if (initialBirthday > 0) timeInMillis = initialBirthday }
-    var year by remember { mutableStateOf(cal.get(Calendar.YEAR).toString()) }
-    var month by remember { mutableStateOf((cal.get(Calendar.MONTH) + 1).toString()) }
-    var day by remember { mutableStateOf(cal.get(Calendar.DAY_OF_MONTH).toString()) }
+    var showPhotoPicker by remember { mutableStateOf(false) }
+    
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = if (initialBirthday > 0) initialBirthday else System.currentTimeMillis()
+    )
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    if (showPhotoPicker) {
+        InternalPhotoPicker(
+            photos = allPhotos,
+            onPhotoSelected = {
+                selectedPhotoUri = it.uri
+                showPhotoPicker = false
+            },
+            onDismiss = { showPhotoPicker = false }
+        )
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("확인") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("취소") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("아기 정보 설정") },
+        onDismissRequest = onDismiss,
+        title = { Text("아기 정보 설정", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(modifier = Modifier.size(100.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentAlignment = Alignment.Center) {
-                    if (selectedPhotoUri != null) AsyncImage(model = selectedPhotoUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    else Icon(Icons.Default.AddAPhoto, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { showPhotoPicker = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selectedPhotoUri != null) {
+                        AsyncImage(
+                            model = selectedPhotoUri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.AddAPhoto,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                Text("정면 아기 사진을 등록해 주세요", style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterHorizontally))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("아기 이름") }, modifier = Modifier.fillMaxWidth())
-                Text("생년월일", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("년") }, modifier = Modifier.weight(1.5f)); OutlinedTextField(value = month, onValueChange = { month = it }, label = { Text("월") }, modifier = Modifier.weight(1f)); OutlinedTextField(value = day, onValueChange = { day = it }, label = { Text("일") }, modifier = Modifier.weight(1f)) }
+                
+                Text(
+                    "정면 아기 사진을 등록해 주세요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("아기 이름") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = datePickerState.selectedDateMillis?.let { DateUtils.formatDate(it) } ?: "",
+                    onValueChange = {},
+                    label = { Text("생년월일") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = { Icon(Icons.Default.CalendarToday, null) }
+                )
             }
         },
-        confirmButton = { Button(onClick = { val newCal = Calendar.getInstance().apply { set(year.toIntOrNull() ?: 2024, (month.toIntOrNull() ?: 1) - 1, day.toIntOrNull() ?: 1) }; onSave(name, newCal.timeInMillis, selectedPhotoUri) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(name, datePickerState.selectedDateMillis ?: 0L, selectedPhotoUri)
+                },
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("저장")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InternalPhotoPicker(
+    photos: List<Photo>,
+    onPhotoSelected: (Photo) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("사진 선택", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "뒤로가기")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(photos, key = { it.id }) { photo ->
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(photo.uri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clickable { onPhotoSelected(photo) },
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
