@@ -6,6 +6,7 @@ import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AppDatabase
 import com.sungmin.haru_i.util.NotificationHelper
 import kotlinx.coroutines.flow.first
+import android.util.Log
 
 class SmartJournalWorker(
     context: Context,
@@ -13,9 +14,12 @@ class SmartJournalWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        Log.d("SmartJournalWorker", "Work started")
         val photoUri = inputData.getString("photoUri") ?: return Result.failure()
         val photoId = inputData.getLong("photoId", -1L)
         val notificationId = photoId.toInt()
+
+        Log.d("SmartJournalWorker", "Analyzing photoId: $photoId")
 
         val database = AppDatabase.getDatabase(applicationContext)
         val repository = PhotoRepository(applicationContext, database.photoDao())
@@ -34,6 +38,7 @@ class SmartJournalWorker(
             val response = repository.describePhoto(photo)
             
             if (response != null) {
+                Log.d("SmartJournalWorker", "Analysis success: ${response.caption}")
                 NotificationHelper.showNotification(
                     applicationContext,
                     "AI 기록 완료",
@@ -42,6 +47,7 @@ class SmartJournalWorker(
                 )
                 return Result.success()
             } else {
+                Log.e("SmartJournalWorker", "Analysis failed: null response")
                 NotificationHelper.showNotification(
                     applicationContext,
                     "AI 기록 실패",
@@ -51,6 +57,7 @@ class SmartJournalWorker(
                 return Result.failure()
             }
         } catch (e: Exception) {
+            Log.e("SmartJournalWorker", "Exception during analysis", e)
             e.printStackTrace()
             NotificationHelper.showNotification(
                 applicationContext,

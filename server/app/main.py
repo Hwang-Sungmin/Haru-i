@@ -36,17 +36,20 @@ app.mount("/reference", StaticFiles(directory=REFERENCE_DIR), name="reference")
 # Include dashboard router
 app.include_router(dashboard_router)
 
+
 @app.post("/stop")
 async def stop_analysis():
     current_status["stop_requested"] = True
     current_status["task"] = "Stopped"
     return {"message": "Stop requested"}
 
+
 @app.post("/resume")
 async def resume_server():
     current_status["stop_requested"] = False
     current_status["task"] = "Idle"
     return {"message": "Server resumed"}
+
 
 @app.post("/register")
 async def register_baby(file: UploadFile = File(...)):
@@ -58,6 +61,7 @@ async def register_baby(file: UploadFile = File(...)):
         return {"status": "success"}
     finally:
         current_status["task"] = "Idle"
+
 
 @app.post("/analyze")
 async def analyze_photo(file: UploadFile = File(...)):
@@ -92,13 +96,13 @@ async def analyze_photo(file: UploadFile = File(...)):
         for backend in backends:
             try:
                 result = DeepFace.verify(
-                    img1_path = temp_analyze_path,
-                    img2_path = ref_path,
-                    model_name = "Facenet512",
-                    detector_backend = backend,
-                    distance_metric = "cosine",
-                    enforce_detection = False,
-                    align = True
+                    img1_path=temp_analyze_path,
+                    img2_path=ref_path,
+                    model_name="Facenet512",
+                    detector_backend=backend,
+                    distance_metric="cosine",
+                    enforce_detection=False,
+                    align=True
                 )
                 if result: break
             except Exception as e:
@@ -142,6 +146,74 @@ async def analyze_photo(file: UploadFile = File(...)):
             os.remove(temp_analyze_path)
         current_status["last_update"] = time.time()
 
+
+@app.post("/describe")
+async def describe_photo(file: UploadFile = File(...)):
+    current_status["task"] = "Describing"
+    unique_id = uuid.uuid4().hex[:8]
+    temp_path = os.path.join(CURRENT_DIR, f"describe_{unique_id}.jpg")
+
+    try:
+        contents = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(contents)
+
+        # DeepFace를 사용하여 감정 및 정보 분석
+        backends = ["ssd", "opencv", "skip"]
+        objs = None
+        for backend in backends:
+            try:
+                objs = DeepFace.analyze(
+                    img_path=temp_path,
+                    actions=['emotion', 'age', 'gender'],
+                    enforce_detection=False,
+                    detector_backend=backend
+                )
+                if objs: break
+            except:
+                continue
+
+        if not objs:
+            return {"caption": "사진에서 아기를 찾을 수 없어요.", "emotion": "unknown"}
+
+        analysis = objs[0]
+        emotion = analysis.get('dominant_emotion', 'neutral')
+        age = int(analysis.get('age', 0))
+        gender = analysis.get('dominant_gender', 'Woman')  # 아기는 보통 여성으로 오인되는 경우가 많음
+
+        # 한국어 캡션 생성 (간이형)
+        captions = {
+            "happy": "방긋 웃고 있는 예쁜 아기 모습이에요.",
+            "sad": "조금 슬픈 표정을 짓고 있네요. 무슨 일이 있었나요?",
+            "angry": "뿌루퉁한 표정이 너무 귀여워요!",
+            "surprise": "눈을 동그랗게 뜨고 깜짝 놀란 표정이에요.",
+            "fear": "조금 겁을 먹은 것 같아요. 꼭 안아주세요.",
+            "disgust": "인상을 찌푸린 모습도 사랑스러워요.",
+            "neutral": "평온하게 휴식을 취하고 있는 아기의 모습입니다.",
+            "sleepy": "쿨쿨 잠든 천사 같은 모습이에요."  # 커스텀 로직 추가 가능
+        }
+
+        # 나이가 아주 어리면 졸린 것으로 간주하거나 특정 키워드 추가
+        caption = captions.get(emotion, "소중한 우리 아기의 순간입니다.")
+        if age < 5:
+            caption = "[아기] " + caption
+
+        return {
+            "caption": caption,
+            "emotion": emotion,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Description Failed: {str(e)}")
+        return {"status": "error", "message": str(e)}
+    finally:
+        current_status["task"] = "Idle"
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
