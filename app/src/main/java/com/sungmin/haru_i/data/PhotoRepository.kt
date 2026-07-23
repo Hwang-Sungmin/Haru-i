@@ -30,6 +30,42 @@ class PhotoRepository(
 
     fun getWorkManager() = workManager
 
+    suspend fun resetServer() {
+        try {
+            RetrofitClient.apiService.resetServer()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun stopServer() {
+        try {
+            RetrofitClient.apiService.stopServer()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun startBatch() {
+        try {
+            RetrofitClient.apiService.startBatch()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun finishBatch() {
+        try {
+            RetrofitClient.apiService.finishBatch()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun cancelAnalysis(month: String) {
+        workManager.cancelUniqueWork("analysis_$month")
+    }
+
     fun analyzeMonthInBackground(month: String) {
         val inputData = workDataOf("month" to month)
         val request = OneTimeWorkRequestBuilder<PhotoAnalysisWorker>()

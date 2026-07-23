@@ -43,4 +43,16 @@ interface ApiService {
     suspend fun describePhoto(
         @Part file: MultipartBody.Part
     ): DescribeResponse
+
+    @POST("/stop")
+    suspend fun stopServer(): RegisterResponse
+
+    @POST("/reset")
+    suspend fun resetServer(): RegisterResponse
+
+    @POST("/start")
+    suspend fun startBatch(): RegisterResponse
+
+    @POST("/finish")
+    suspend fun finishBatch(): RegisterResponse
 }

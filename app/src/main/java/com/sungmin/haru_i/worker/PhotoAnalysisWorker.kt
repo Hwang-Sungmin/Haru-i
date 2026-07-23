@@ -28,16 +28,20 @@ class PhotoAnalysisWorker(
         val repository = PhotoRepository(applicationContext, database.photoDao())
         val faceDetectorHelper = FaceDetectorHelper(applicationContext)
 
-        NotificationHelper.showNotification(
-            applicationContext,
-            "아기 사진 분석 중",
-            "$month 사진을 분석하고 있습니다...",
-            notificationId,
-            isProgress = true,
-            progress = 0
-        )
-
         try {
+            // 시작 전 서버 초기화 및 시작 알림
+            repository.resetServer()
+            repository.startBatch()
+
+            NotificationHelper.showNotification(
+                applicationContext,
+                "아기 사진 분석 준비 중",
+                "$month 분석을 준비하고 있습니다...",
+                notificationId,
+                isProgress = true,
+                progress = 0
+            )
+
             val allPhotos = repository.getPhotos().first()
             val dateFormat = SimpleDateFormat("yyyy년 MM월", Locale.KOREAN)
             val targetPhotos = allPhotos.filter { photo ->
@@ -51,35 +55,47 @@ class PhotoAnalysisWorker(
                     "$month 분석할 새로운 사진이 없습니다.",
                     notificationId
                 )
+                repository.finishBatch()
                 return Result.success()
             }
 
             var matchCount = 0
             targetPhotos.forEachIndexed { index, photo ->
-                if (isStopped) return Result.retry()
+                if (isStopped) {
+                    repository.stopServer()
+                    return Result.retry()
+                }
 
-                NotificationHelper.showNotification(
-                    applicationContext,
-                    "아기 사진 분석 중 ($month)",
-                    "${index + 1} / ${targetPhotos.size} 분석 중...",
-                    notificationId,
-                    isProgress = true,
-                    progress = index + 1,
-                    max = targetPhotos.size
-                )
+                // 알림 빈도 조절 (5개 단위 또는 처음/마지막)
+                if (index == 0 || index == targetPhotos.size - 1 || (index + 1) % 5 == 0) {
+                    NotificationHelper.showNotification(
+                        applicationContext,
+                        "아기 사진 분석 중 ($month)",
+                        "${index + 1} / ${targetPhotos.size} 분석 중...",
+                        notificationId,
+                        isProgress = true,
+                        progress = index + 1,
+                        max = targetPhotos.size
+                    )
+                }
 
                 if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
                     val file = getFileFromUri(photo.uri)
                     if (file != null) {
-                        val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                        val body = MultipartBody.Part.createFormData("file", "photo.jpg", requestFile)
-                        val response = RetrofitClient.apiService.analyzePhoto(body)
-                        
-                        if (response.is_target_baby) {
-                            repository.updateBabyStatus(photo, true)
-                            matchCount++
+                        try {
+                            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                            val body = MultipartBody.Part.createFormData("file", "photo.jpg", requestFile)
+                            val response = RetrofitClient.apiService.analyzePhoto(body)
+                            
+                            if (response.is_target_baby) {
+                                repository.updateBabyStatus(photo, true)
+                                matchCount++
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        } finally {
+                            file.delete()
                         }
-                        file.delete()
                     }
                 }
             }
@@ -91,9 +107,11 @@ class PhotoAnalysisWorker(
                 notificationId
             )
 
+            repository.finishBatch()
             return Result.success()
         } catch (e: Exception) {
             e.printStackTrace()
+            repository.finishBatch() // 에러 시에도 서버 상태 원복
             NotificationHelper.showNotification(
                 applicationContext,
                 "분석 실패 ($month)",

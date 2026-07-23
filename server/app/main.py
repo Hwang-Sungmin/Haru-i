@@ -41,6 +41,8 @@ app.include_router(dashboard_router)
 async def stop_analysis():
     current_status["stop_requested"] = True
     current_status["task"] = "Stopped"
+    current_status["is_analyzing"] = False
+    current_status["is_batch_mode"] = False
     return {"message": "Stop requested"}
 
 
@@ -48,7 +50,43 @@ async def stop_analysis():
 async def resume_server():
     current_status["stop_requested"] = False
     current_status["task"] = "Idle"
+    current_status["is_analyzing"] = False
+    current_status["is_batch_mode"] = False
     return {"message": "Server resumed"}
+
+
+@app.post("/reset")
+async def reset_server():
+    """분석 히스토리와 상태를 완전히 초기화합니다."""
+    analysis_history.clear()
+    current_status.update({
+        "task": "Idle",
+        "last_result": "None",
+        "current_img": None,
+        "is_analyzing": False,
+        "stop_requested": False,
+        "is_batch_mode": False
+    })
+    return {"message": "Server reset successfully"}
+
+
+@app.post("/start")
+async def start_batch():
+    """대량 분석 시작을 알립니다."""
+    current_status["task"] = "Analyzing"
+    current_status["is_analyzing"] = True
+    current_status["stop_requested"] = False
+    current_status["is_batch_mode"] = True
+    return {"message": "Batch analysis started"}
+
+
+@app.post("/finish")
+async def finish_batch():
+    """대량 분석 종료를 알립니다."""
+    current_status["task"] = "Idle"
+    current_status["is_analyzing"] = False
+    current_status["is_batch_mode"] = False
+    return {"message": "Batch analysis finished"}
 
 
 @app.post("/register")
@@ -88,7 +126,6 @@ async def analyze_photo(file: UploadFile = File(...)):
         ref_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
         if not os.path.exists(ref_path): raise ValueError("기준 사진이 없습니다.")
 
-        # Failsafe: Try multiple backends in case one fails due to environment
         backends = ["ssd", "opencv", "skip"]
         result = None
         last_err = ""
@@ -139,9 +176,12 @@ async def analyze_photo(file: UploadFile = File(...)):
         current_status["last_result"] = f"Error: {str(e)}"
         return {"status": "error", "message": str(e)}
     finally:
-        current_status["is_analyzing"] = False
-        if current_status["task"] != "Error":
-            current_status["task"] = "Idle"
+        # 배치 모드 중이면 is_analyzing과 task를 유지함
+        if not current_status["is_batch_mode"]:
+            current_status["is_analyzing"] = False
+            if current_status["task"] != "Error":
+                current_status["task"] = "Idle"
+            
         if os.path.exists(temp_analyze_path):
             os.remove(temp_analyze_path)
         current_status["last_update"] = time.time()
@@ -181,7 +221,6 @@ async def describe_photo(file: UploadFile = File(...)):
         age = int(analysis.get('age', 0))
         gender = analysis.get('dominant_gender', 'Woman')  # 아기는 보통 여성으로 오인되는 경우가 많음
 
-        # 한국어 캡션 생성 (간이형)
         captions = {
             "happy": "방긋 웃고 있는 예쁜 아기 모습이에요.",
             "sad": "조금 슬픈 표정을 짓고 있네요. 무슨 일이 있었나요?",
@@ -190,10 +229,9 @@ async def describe_photo(file: UploadFile = File(...)):
             "fear": "조금 겁을 먹은 것 같아요. 꼭 안아주세요.",
             "disgust": "인상을 찌푸린 모습도 사랑스러워요.",
             "neutral": "평온하게 휴식을 취하고 있는 아기의 모습입니다.",
-            "sleepy": "쿨쿨 잠든 천사 같은 모습이에요."  # 커스텀 로직 추가 가능
+            "sleepy": "쿨쿨 잠든 천사 같은 모습이에요."
         }
 
-        # 나이가 아주 어리면 졸린 것으로 간주하거나 특정 키워드 추가
         caption = captions.get(emotion, "소중한 우리 아기의 순간입니다.")
         if age < 5:
             caption = "[아기] " + caption

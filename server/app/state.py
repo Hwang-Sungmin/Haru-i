@@ -21,5 +21,6 @@ current_status = {
     "current_img": None,
     "last_result": "None",
     "is_analyzing": False,
-    "stop_requested": False
+    "stop_requested": False,
+    "is_batch_mode": False  # 배치 모드 여부 추가
 }

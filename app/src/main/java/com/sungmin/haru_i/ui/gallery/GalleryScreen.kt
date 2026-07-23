@@ -245,7 +245,7 @@ fun GalleryScreen(
                                 TimelineGrid(
                                     state = timelineGridState,
                                     groupedPhotos = state.groupedPhotos,
-                                    confirmedBabyIds = state.filteredPhotos.map { it.id }.toSet(),
+                                    confirmedBabyIds = state.allPhotos.filter { it.isBaby }.map { it.id }.toSet(),
                                     selectedMonth = state.selectedTimelineMonth,
                                     analyzingMonths = analyzingMonths,
                                     babyBirthday = state.babyInfo.birthday,
@@ -502,7 +502,10 @@ fun HighlightSection(
                             photo = photo,
                             isAnalyzing = isAnalyzingJournal.contains(photo.id),
                             onDismiss = { showMemoDialog = false },
-                            onSave = { onUpdateMemo(photo, it) },
+                            onSave = { 
+                                onUpdateMemo(photo, it)
+                                showMemoDialog = false
+                            },
                             onGenerateAiCaption = { onGenerateAiCaption(photo) }
                         )
                     }
@@ -714,8 +717,14 @@ fun TimelineGrid(
                     }
                     
                     val isAnalyzing = analyzingMonths.contains(selectedMonth)
+                    val context = LocalContext.current
                     TextButton(
-                        onClick = { onAnalyzeMonth(selectedMonth, photosToShow) },
+                        onClick = { 
+                            onAnalyzeMonth(selectedMonth, photosToShow)
+                            if (isAnalyzing) {
+                                android.widget.Toast.makeText(context, "분석이 중단되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         enabled = true
                     ) {
                         if (isAnalyzing) {
