@@ -2,6 +2,7 @@ package com.sungmin.haru_i.worker
 
 import android.content.Context
 import androidx.work.*
+import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.FaceDetectorHelper
 import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AppDatabase
@@ -25,7 +26,8 @@ class PhotoAnalysisWorker(
         val notificationId = month.hashCode()
 
         val database = AppDatabase.getDatabase(applicationContext)
-        val repository = PhotoRepository(applicationContext, database.photoDao())
+        val babyManager = BabyManager(applicationContext)
+        val repository = PhotoRepository(applicationContext, database.photoDao(), babyManager)
         val faceDetectorHelper = FaceDetectorHelper(applicationContext)
 
         try {
@@ -89,7 +91,7 @@ class PhotoAnalysisWorker(
                         try {
                             val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                             val body = MultipartBody.Part.createFormData("file", "photo.jpg", requestFile)
-                            val response = RetrofitClient.apiService.analyzePhoto(body)
+                            val response = RetrofitClient.apiService.analyzePhoto(body, babyManager.getUserId())
                             
                             if (response.is_target_baby) {
                                 repository.updateBabyStatus(photo, true)

@@ -2,6 +2,7 @@ package com.sungmin.haru_i.worker
 
 import android.content.Context
 import androidx.work.*
+import com.sungmin.haru_i.data.BabyManager
 import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AppDatabase
 import com.sungmin.haru_i.util.NotificationHelper
@@ -22,7 +23,8 @@ class SmartJournalWorker(
         Log.d("SmartJournalWorker", "Analyzing photoId: $photoId")
 
         val database = AppDatabase.getDatabase(applicationContext)
-        val repository = PhotoRepository(applicationContext, database.photoDao())
+        val babyManager = BabyManager(applicationContext)
+        val repository = PhotoRepository(applicationContext, database.photoDao(), babyManager)
 
         NotificationHelper.showNotification(
             applicationContext,

@@ -24,7 +24,8 @@ import java.io.File
 
 class PhotoRepository(
     private val context: Context,
-    private val photoDao: PhotoDao
+    private val photoDao: PhotoDao,
+    private val babyManager: BabyManager
 ) {
     private val workManager = WorkManager.getInstance(context)
 
@@ -32,7 +33,7 @@ class PhotoRepository(
 
     suspend fun resetServer() {
         try {
-            RetrofitClient.apiService.resetServer()
+            RetrofitClient.apiService.resetServer(babyManager.getUserId())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -40,7 +41,7 @@ class PhotoRepository(
 
     suspend fun stopServer() {
         try {
-            RetrofitClient.apiService.stopServer()
+            RetrofitClient.apiService.stopServer(babyManager.getUserId())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -48,7 +49,7 @@ class PhotoRepository(
 
     suspend fun startBatch() {
         try {
-            RetrofitClient.apiService.startBatch()
+            RetrofitClient.apiService.startBatch(babyManager.getUserId())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -56,7 +57,7 @@ class PhotoRepository(
 
     suspend fun finishBatch() {
         try {
-            RetrofitClient.apiService.finishBatch()
+            RetrofitClient.apiService.finishBatch(babyManager.getUserId())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -71,10 +72,10 @@ class PhotoRepository(
         val request = OneTimeWorkRequestBuilder<PhotoAnalysisWorker>()
             .setInputData(inputData)
             .addTag("analysis_task")
-            .addTag("analysis_\$month")
+            .addTag("analysis_$month")
             .build()
         workManager.enqueueUniqueWork(
-            "analysis_\$month",
+            "analysis_$month",
             ExistingWorkPolicy.REPLACE,
             request
         )
@@ -88,10 +89,10 @@ class PhotoRepository(
         val request = OneTimeWorkRequestBuilder<SmartJournalWorker>()
             .setInputData(inputData)
             .addTag("journal_task")
-            .addTag("journal_\${photo.id}")
+            .addTag("journal_${photo.id}")
             .build()
         workManager.enqueueUniqueWork(
-            "journal_\${photo.id}",
+            "journal_${photo.id}",
             ExistingWorkPolicy.REPLACE,
             request
         )
@@ -217,7 +218,7 @@ class PhotoRepository(
             val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
             
-            val response = RetrofitClient.apiService.describePhoto(body)
+            val response = RetrofitClient.apiService.describePhoto(body, babyManager.getUserId())
             
             // 분석 결과 저장
             if (response.caption != null || response.emotion != null) {

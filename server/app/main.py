@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +11,7 @@ from deepface import DeepFace
 
 from state import (
     REFERENCE_DIR, STATIC_DIR, HISTORY_DIR, CURRENT_DIR,
-    analysis_history, current_status
+    current_status, supabase
 )
 from dashboard import router as dashboard_router
 
@@ -57,8 +57,7 @@ async def resume_server():
 
 @app.post("/reset")
 async def reset_server():
-    """분석 히스토리와 상태를 완전히 초기화합니다."""
-    analysis_history.clear()
+    """로컬 상태를 초기화하고 필요한 경우 DB 연동을 준비합니다."""
     current_status.update({
         "task": "Idle",
         "last_result": "None",
@@ -102,7 +101,10 @@ async def register_baby(file: UploadFile = File(...)):
 
 
 @app.post("/analyze")
-async def analyze_photo(file: UploadFile = File(...)):
+async def analyze_photo(
+    file: UploadFile = File(...),
+    x_user_id: str = Header(None)
+):
     if current_status["stop_requested"]:
         return JSONResponse(status_code=503, content={"status": "stopped"})
 
@@ -154,19 +156,21 @@ async def analyze_photo(file: UploadFile = File(...)):
         res_text = "MATCH" if is_verified else "NO MATCH"
         current_status["last_result"] = res_text
 
+        # Supabase Logging
+        if supabase:
+            try:
+                data = {
+                    "user_id": x_user_id or "default_user",
+                    "filename": file.filename,
+                    "result": res_text,
+                    "distance": distance
+                }
+                supabase.table("analysis_history").insert(data).execute()
+            except Exception as se:
+                logger.error(f"Supabase Log Error: {str(se)}")
+
         hist_name = f"hist_{unique_id}.jpg"
         shutil.copy(temp_analyze_path, os.path.join(HISTORY_DIR, hist_name))
-
-        analysis_history.append({
-            "time": time.strftime("%H:%M:%S"),
-            "name": file.filename,
-            "res": res_text,
-            "dist": f"{distance:.4f}",
-            "thumb": hist_name
-        })
-
-        if len(analysis_history) > 50:
-            analysis_history.pop(0)
 
         return {"is_target_baby": is_verified, "distance": distance}
 
@@ -176,11 +180,9 @@ async def analyze_photo(file: UploadFile = File(...)):
         current_status["last_result"] = f"Error: {str(e)}"
         return {"status": "error", "message": str(e)}
     finally:
-        # 배치 모드 중이면 is_analyzing과 task를 유지함
+        current_status["is_analyzing"] = False
         if not current_status["is_batch_mode"]:
-            current_status["is_analyzing"] = False
-            if current_status["task"] != "Error":
-                current_status["task"] = "Idle"
+            current_status["task"] = "Idle"
             
         if os.path.exists(temp_analyze_path):
             os.remove(temp_analyze_path)
@@ -219,7 +221,7 @@ async def describe_photo(file: UploadFile = File(...)):
         analysis = objs[0]
         emotion = analysis.get('dominant_emotion', 'neutral')
         age = int(analysis.get('age', 0))
-        gender = analysis.get('dominant_gender', 'Woman')  # 아기는 보통 여성으로 오인되는 경우가 많음
+        gender = analysis.get('dominant_gender', 'Woman')
 
         captions = {
             "happy": "방긋 웃고 있는 예쁜 아기 모습이에요.",

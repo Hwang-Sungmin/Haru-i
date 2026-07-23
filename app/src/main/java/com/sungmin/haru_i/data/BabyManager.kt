@@ -34,4 +34,13 @@ class BabyManager(context: Context) {
         }
         _babyInfo.value = BabyInfo(name, birthday, photoUri ?: _babyInfo.value.referencePhotoUri)
     }
+
+    fun getUserId(): String {
+        var id = prefs.getString("user_id", null)
+        if (id == null) {
+            id = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("user_id", id).apply()
+        }
+        return id
+    }
 }

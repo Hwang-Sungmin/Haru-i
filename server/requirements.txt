@@ -6,3 +6,5 @@ tf-keras
 opencv-python
 opencv-contrib-python
 numpy
+supabase
+python-dotenv

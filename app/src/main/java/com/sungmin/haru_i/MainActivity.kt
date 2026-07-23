@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         
         val database = AppDatabase.getDatabase(this)
         val babyManager = BabyManager(this)
-        val repository = PhotoRepository(this, database.photoDao())
+        val repository = PhotoRepository(this, database.photoDao(), babyManager)
         val faceDetectorHelper = FaceDetectorHelper(this)
         
         setContent {

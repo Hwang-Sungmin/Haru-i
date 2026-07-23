@@ -1,9 +1,7 @@
 package com.sungmin.haru_i.data.remote
 
 import okhttp3.MultipartBody
-import retrofit2.http.Multipart
-import retrofit2.http.POST
-import retrofit2.http.Part
+import retrofit2.http.*
 
 data class RegisterResponse(
     val status: String,
@@ -29,30 +27,41 @@ interface ApiService {
     @Multipart
     @POST("/register")
     suspend fun registerBaby(
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Header("X-User-ID") userId: String
     ): RegisterResponse
 
     @Multipart
     @POST("/analyze")
     suspend fun analyzePhoto(
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Header("X-User-ID") userId: String
     ): AnalyzeResponse
 
     @Multipart
     @POST("/describe")
     suspend fun describePhoto(
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Header("X-User-ID") userId: String
     ): DescribeResponse
 
     @POST("/stop")
-    suspend fun stopServer(): RegisterResponse
+    suspend fun stopServer(
+        @Header("X-User-ID") userId: String
+    ): RegisterResponse
 
     @POST("/reset")
-    suspend fun resetServer(): RegisterResponse
+    suspend fun resetServer(
+        @Header("X-User-ID") userId: String
+    ): RegisterResponse
 
     @POST("/start")
-    suspend fun startBatch(): RegisterResponse
+    suspend fun startBatch(
+        @Header("X-User-ID") userId: String
+    ): RegisterResponse
 
     @POST("/finish")
-    suspend fun finishBatch(): RegisterResponse
+    suspend fun finishBatch(
+        @Header("X-User-ID") userId: String
+    ): RegisterResponse
 }
