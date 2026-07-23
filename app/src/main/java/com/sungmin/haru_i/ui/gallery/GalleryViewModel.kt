@@ -230,7 +230,7 @@ class GalleryViewModel(
                     if (file != null) {
                         val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                         val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                        RetrofitClient.apiService.registerBaby(body)
+                        RetrofitClient.apiService.registerBaby(body, babyManager.getUserId())
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

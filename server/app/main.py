@@ -89,15 +89,75 @@ async def finish_batch():
 
 
 @app.post("/register")
-async def register_baby(file: UploadFile = File(...)):
+async def register_baby(
+    file: UploadFile = File(...),
+    x_user_id: str = Header(None)
+):
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-ID header is required")
+        
     current_status["task"] = "Registering..."
     try:
-        file_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # 1. 로컬 백업 저장 (선택 사항)
+        local_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
+        contents = await file.read()
+        with open(local_path, "wb") as buffer:
+            buffer.write(contents)
+            
+        # 2. Supabase Storage 업로드
+        if supabase:
+            try:
+                # 'profiles' 버킷이 미리 생성되어 있어야 합니다.
+                bucket_name = "profiles"
+                file_path = f"{x_user_id}.jpg"
+                
+                # 기존 파일 삭제 시도 (덮어쓰기 보장)
+                try:
+                    supabase.storage.from_(bucket_name).remove([file_path])
+                except:
+                    pass
+                    
+                # 신규 파일 업로드
+                supabase.storage.from_(bucket_name).upload(
+                    path=file_path,
+                    file=contents,
+                    file_options={"content-type": "image/jpeg"}
+                )
+                logger.info(f"Successfully uploaded profile for user: {x_user_id}")
+            except Exception as se:
+                logger.error(f"Supabase Storage Upload Error: {str(se)}")
+                
         return {"status": "success"}
     finally:
         current_status["task"] = "Idle"
+
+
+async def get_reference_photo(user_id: str) -> str:
+    """사용자의 기준 사진 경로를 반환합니다. 로컬에 없으면 Storage에서 다운로드합니다."""
+    local_path = os.path.join(REFERENCE_DIR, f"{user_id}_ref.jpg")
+    
+    # 로컬에 있으면 즉시 반환
+    if os.path.exists(local_path):
+        return local_path
+        
+    # 로컬에 없으면 Supabase Storage에서 다운로드
+    if supabase:
+        try:
+            bucket_name = "profiles"
+            file_path = f"{user_id}.jpg"
+            res = supabase.storage.from_(bucket_name).download(file_path)
+            with open(local_path, "wb") as f:
+                f.write(res)
+            return local_path
+        except Exception as e:
+            logger.error(f"Failed to download reference photo for {user_id}: {str(e)}")
+            
+    # 최후의 수단: 기본 파일 체크
+    default_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
+    if os.path.exists(default_path):
+        return default_path
+        
+    return None
 
 
 @app.post("/analyze")
@@ -107,6 +167,9 @@ async def analyze_photo(
 ):
     if current_status["stop_requested"]:
         return JSONResponse(status_code=503, content={"status": "stopped"})
+
+    if not x_user_id:
+        x_user_id = "default_user"
 
     current_status["is_analyzing"] = True
     current_status["task"] = "Analyzing"
@@ -125,8 +188,10 @@ async def analyze_photo(
         shutil.copy(temp_analyze_path, current_display_path)
         current_status["current_img"] = "current_target.jpg"
 
-        ref_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
-        if not os.path.exists(ref_path): raise ValueError("기준 사진이 없습니다.")
+        # 사용자별 기준 사진 가져오기
+        ref_path = await get_reference_photo(x_user_id)
+        if not ref_path:
+            raise ValueError(f"사용자({x_user_id})의 기준 사진이 없습니다.")
 
         backends = ["ssd", "opencv", "skip"]
         result = None
@@ -160,7 +225,7 @@ async def analyze_photo(
         if supabase:
             try:
                 data = {
-                    "user_id": x_user_id or "default_user",
+                    "user_id": x_user_id,
                     "filename": file.filename,
                     "result": res_text,
                     "distance": distance

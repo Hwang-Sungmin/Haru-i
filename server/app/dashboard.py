@@ -2,28 +2,46 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 import time
 import os
-from state import analysis_history, current_status, REFERENCE_DIR
+from state import current_status, REFERENCE_DIR, supabase
 
 router = APIRouter()
 
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    ref_exists = os.path.exists(os.path.join(REFERENCE_DIR, "baby_ref.jpg"))
     ts = int(time.time())
 
+    # Supabase에서 최근 분석 이력 가져오기
+    history_data = []
+    if supabase:
+        try:
+            response = supabase.table("analysis_history") \
+                .select("*") \
+                .order("created_at", desc=True) \
+                .limit(15) \
+                .execute()
+            history_data = response.data
+        except Exception as e:
+            print(f"Failed to fetch history from Supabase: {e}")
+
     history_html = ""
-    for h in reversed(analysis_history[-15:]):
-        color = "#4CAF50" if h['res'] == "MATCH" else ("#F44336" if h['res'] == "NO MATCH" else "#999")
-        thumb_url = f"/static/history/{h['thumb']}?t={ts}" if h.get('thumb') else ""
+    for h in history_data:
+        res = h.get('result', 'UNKNOWN')
+        color = "#4CAF50" if res == "MATCH" else ("#F44336" if res == "NO MATCH" else "#999")
+        
+        # 시간 포맷팅 (ISO -> HH:MM:SS)
+        created_at = h.get('created_at', '')
+        display_time = created_at.split('T')[-1].split('.')[0] if 'T' in created_at else created_at
+        
         history_html += f"""
         <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 12px;">{h['time']}</td>
+            <td style="padding: 12px;">{display_time}</td>
             <td style="padding: 12px; display: flex; align-items: center; gap: 10px;">
-                {"<img src='" + thumb_url + "' style='width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid #eee;'>" if thumb_url else ""}
-                <span style="font-size: 0.85em; color: #555;">{h['name']}</span>
+                <span style="font-size: 0.85em; color: #555;">{h.get('filename', 'Unknown')}</span>
+                <br/><small style="color: #aaa; font-size: 0.7em;">{h.get('user_id', '')[:8]}...</small>
             </td>
-            <td style="padding: 12px; color: {color}; font-weight: bold;">{h['res']}</td>
-            <td style="padding: 12px; font-family: 'Courier New', monospace; font-size: 0.9em;">{h['dist']}</td>
+            <td style="padding: 12px; color: {color}; font-weight: bold;">{res}</td>
+            <td style="padding: 12px; font-family: 'Courier New', monospace; font-size: 0.9em;">{h.get('distance', '0.0')}</td>
         </tr>
         """
 
@@ -73,23 +91,24 @@ async def dashboard(request: Request):
                                 {f"<img src='{current_img_url}' style='width: 100%; height: 100%; object-fit: contain;'>" if current_img_url else "<span style='color: #ccc;'>No Image</span>"}
                             </div>
                             <div style="margin-top: 15px; font-weight: bold; font-size: 1.1em;">
-                                결과: <span style="color: {('#4CAF50' if current_status['last_result']=='MATCH' else '#F44336') if current_status['last_result'] != 'None' else '#999'}">{current_status["last_result"]}</span>
+                                결과: <span style="color: {('#4CAF50' if current_status['last_result'] == 'MATCH' else '#F44336') if current_status['last_result'] != 'None' else '#999'}">{current_status["last_result"]}</span>
                             </div>
                         </div>
                         <div class="card" style="text-align: center;">
                             <h3 style="margin-top: 0; font-size: 1em; color: #888;">우리 아기 기준 사진</h3>
+                            <p style="font-size: 0.8em; color: #999;">(전체 관리자용 기본 이미지)</p>
                             <img src='/reference/baby_ref.jpg?t={ts}' style='width: 150px; height: 150px; object-fit: cover; border-radius: 50%; border: 4px solid #EBCFB2; background: #eee;'>
                         </div>
                     </div>
 
                     <div class="card">
-                        <h3 style="margin-top: 0; margin-bottom: 20px;">분석 히스토리</h3>
+                        <h3 style="margin-top: 0; margin-bottom: 20px;">전체 분석 히스토리 (Supabase DB)</h3>
                         <div style="max-height: 550px; overflow-y: auto;">
                             <table style="width: 100%; border-collapse: collapse; text-align: left;">
                                 <thead>
                                     <tr style="border-bottom: 2px solid #FDF2F0;">
                                         <th style="padding: 12px;">시간</th>
-                                        <th style="padding: 12px;">대상 사진</th>
+                                        <th style="padding: 12px;">대상 사진 / 사용자</th>
                                         <th style="padding: 12px;">결과</th>
                                         <th style="padding: 12px;">유사도</th>
                                     </tr>
