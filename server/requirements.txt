@@ -8,3 +8,4 @@ opencv-contrib-python
 numpy
 supabase
 python-dotenv
+urllib3==1.26.15
