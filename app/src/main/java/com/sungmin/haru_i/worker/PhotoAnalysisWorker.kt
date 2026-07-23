@@ -66,8 +66,12 @@ class PhotoAnalysisWorker(
                     return Result.retry()
                 }
 
-                // 알림 빈도 조절 (5개 단위 또는 처음/마지막)
-                if (index == 0 || index == targetPhotos.size - 1 || (index + 1) % 5 == 0) {
+                // 알림 빈도 조절 (10개 단위 또는 처음/마지막)
+                val isFirst = index == 0
+                val isLast = index == targetPhotos.size - 1
+                val isEveryTen = (index + 1) % 10 == 0
+
+                if (isFirst || isLast || isEveryTen) {
                     NotificationHelper.showNotification(
                         applicationContext,
                         "아기 사진 분석 중 ($month)",
