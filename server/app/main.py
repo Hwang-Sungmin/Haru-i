@@ -131,24 +131,19 @@ async def register_baby(
                 bucket_name = "profiles"
                 file_path = f"{x_user_id}.jpg"
                 
-                # 기존 파일 및 과거 레거시 파일 삭제 (확실한 단일화)
-                try:
-                    # 사용자 전용 파일과 공용 레거시 파일 모두 삭제 시도
-                    legacy_files = [file_path, "baby_ref.jpg", "baby_ref.png"]
-                    supabase.storage.from_(bucket_name).remove(legacy_files)
-                    logger.info(f"Storage cleaned up for {x_user_id} (including legacy files)")
-                except:
-                    pass
-                    
-                # 신규 파일 업로드
-                upload_res = supabase.storage.from_(bucket_name).upload(
+                # 업로드 시도 (upsert 옵션으로 덮어쓰기 허용)
+                supabase.storage.from_(bucket_name).upload(
                     path=file_path,
                     file=contents,
-                    file_options={"content-type": "image/jpeg", "cache-control": "0"}
+                    file_options={
+                        "content-type": "image/jpeg", 
+                        "cache-control": "0",
+                        "upsert": "true"
+                    }
                 )
-                logger.info(f"Supabase upload success for {x_user_id}")
+                logger.info(f"Supabase Storage Upload Success: {file_path}")
             except Exception as se:
-                logger.error(f"Supabase Storage Error: {str(se)}")
+                logger.error(f"Supabase Storage failure for {x_user_id}: {str(se)}")
         
         # 분석 상태 캐시 초기화 (새 사진 등록 시 이전 결과와 섞이지 않게)
         current_status["last_result"] = "None"

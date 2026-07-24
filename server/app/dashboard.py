@@ -31,11 +31,18 @@ async def dashboard(request: Request):
     # 2. 기준 사진 결정 로직
     ref_photo_url = "/reference/baby_ref.jpg" # 기본값
     
-    # 특정 사용자 ID가 있는 경우 해당 사진 우선
+    # 2-1. 특정 사용자 ID가 있는 경우 해당 사진 우선
     if last_user_id:
         user_spec_path = os.path.join(REFERENCE_DIR, f"{last_user_id}_ref.jpg")
         if os.path.exists(user_spec_path):
             ref_photo_url = f"/reference/{last_user_id}_ref.jpg"
+
+    # 2-2. 위에서 사진을 못 찾았다면 폴더 내 아무 사진이나 찾음 (가장 최근 등록된 사진)
+    if not os.path.exists(os.path.join(REFERENCE_DIR, os.path.basename(ref_photo_url.split('?')[0]))):
+        all_refs = glob.glob(os.path.join(REFERENCE_DIR, "*.jpg"))
+        if all_refs:
+            all_refs.sort(key=os.path.getmtime)
+            ref_photo_url = f"/reference/{os.path.basename(all_refs[-1])}"
     
     # 캐시 방지 파라미터 추가
     ref_photo_url += f"?t={ts}"
@@ -44,6 +51,7 @@ async def dashboard(request: Request):
     for h in history_data:
         res = h.get('result', 'UNKNOWN')
         color = "#4CAF50" if res == "MATCH" else ("#F44336" if res == "NO MATCH" else "#999")
+
         created_at = h.get('created_at', '')
         display_time = created_at.split('T')[-1].split('.')[0] if 'T' in created_at else created_at
         
