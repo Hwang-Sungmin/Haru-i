@@ -18,6 +18,7 @@
 *   **Background Processing**: WorkManager를 필수 사용하며, 작업이 터미널 상태(Success/Fail/Cancel)에 도달할 때까지 UI 상태를 유지하는 **'Sticky State'** 전략을 준수합니다.
 *   **Image Processing**: 모든 이미지는 서버 전송 전 **최대 1024px**로 리사이징하고, EXIF 정보를 기반으로 회전 각도를 자동 보정합니다.
 *   **Networking**: Retrofit2 & OkHttp를 사용하며, 모든 요청 헤더에 사용자 식별을 위한 `X-User-ID`를 포함합니다.
+*   **User ID Policy**: `User ID`는 기기 고유의 `Android ID` (`Settings.Secure.ANDROID_ID`)를 사용합니다. 이는 앱 삭제 후 재설치 시에도 데이터 영속성을 유지하기 위함입니다.
 
 ### **서버 및 클라우드 (Python & Supabase)**
 *   **Server Framework**: FastAPI를 사용합니다.
