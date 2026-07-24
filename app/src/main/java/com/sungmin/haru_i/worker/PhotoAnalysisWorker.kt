@@ -65,6 +65,7 @@ class PhotoAnalysisWorker(
             targetPhotos.forEachIndexed { index, photo ->
                 if (isStopped) {
                     repository.stopServer()
+                    NotificationHelper.cancelNotification(applicationContext, notificationId)
                     return Result.retry()
                 }
 

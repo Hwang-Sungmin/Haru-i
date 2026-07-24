@@ -64,4 +64,7 @@ interface ApiService {
     suspend fun finishBatch(
         @Header("X-User-ID") userId: String
     ): RegisterResponse
+
+    @GET("/health")
+    suspend fun checkHealth(): Map<String, Any>
 }

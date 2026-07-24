@@ -88,6 +88,12 @@ async def finish_batch():
     return {"message": "Batch analysis finished"}
 
 
+@app.get("/health")
+async def health_check():
+    """서버 연결 상태를 확인합니다."""
+    return {"status": "ok", "supabase": supabase is not None}
+
+
 @app.post("/register")
 async def register_baby(
     file: UploadFile = File(...),
@@ -103,18 +109,21 @@ async def register_baby(
     try:
         # 1. 파일 읽기
         contents = await file.read()
+        file_size = len(contents)
+        if file_size == 0:
+            raise ValueError("Empty file received")
         
         # 2. 로컬 저장 (사용자 식별용)
         user_ref_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
         with open(user_ref_path, "wb") as buffer:
             buffer.write(contents)
             
-        # 3. 로컬 저장 (대시보드 기본값 및 호환성용)
+        # 3. 로컬 저장 (대시보드 기본값 및 호환성용 - 강제 덮어쓰기)
         legacy_ref_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
         with open(legacy_ref_path, "wb") as buffer:
             buffer.write(contents)
             
-        logger.info(f"Local reference saved at: {user_ref_path}")
+        logger.info(f"Local reference files updated for {x_user_id}")
             
         # 4. Supabase Storage 업로드
         if supabase:
@@ -122,9 +131,12 @@ async def register_baby(
                 bucket_name = "profiles"
                 file_path = f"{x_user_id}.jpg"
                 
-                # 기존 파일 삭제 시도 (덮어쓰기 보장)
+                # 기존 파일 및 과거 레거시 파일 삭제 (확실한 단일화)
                 try:
-                    supabase.storage.from_(bucket_name).remove([file_path])
+                    # 사용자 전용 파일과 공용 레거시 파일 모두 삭제 시도
+                    legacy_files = [file_path, "baby_ref.jpg", "baby_ref.png"]
+                    supabase.storage.from_(bucket_name).remove(legacy_files)
+                    logger.info(f"Storage cleaned up for {x_user_id} (including legacy files)")
                 except:
                     pass
                     
@@ -132,18 +144,20 @@ async def register_baby(
                 upload_res = supabase.storage.from_(bucket_name).upload(
                     path=file_path,
                     file=contents,
-                    file_options={"content-type": "image/jpeg"}
+                    file_options={"content-type": "image/jpeg", "cache-control": "0"}
                 )
                 logger.info(f"Supabase upload success for {x_user_id}")
             except Exception as se:
-                logger.error(f"Supabase Storage Upload Error for {x_user_id}: {str(se)}")
-        else:
-            logger.warning("Supabase client not initialized, skipping cloud upload")
+                logger.error(f"Supabase Storage Error: {str(se)}")
+        
+        # 분석 상태 캐시 초기화 (새 사진 등록 시 이전 결과와 섞이지 않게)
+        current_status["last_result"] = "None"
+        current_status["current_img"] = None
                 
-        return {"status": "success", "user_id": x_user_id}
+        return {"status": "success", "user_id": x_user_id, "size": len(contents)}
     except Exception as e:
         logger.error(f"Registration Error: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
     finally:
         current_status["task"] = "Idle"
 
