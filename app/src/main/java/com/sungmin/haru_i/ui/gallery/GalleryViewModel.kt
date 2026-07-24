@@ -2,6 +2,7 @@ package com.sungmin.haru_i.ui.gallery
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import com.sungmin.haru_i.data.PhotoRepository
 import com.sungmin.haru_i.data.local.AlbumEntity
 import com.sungmin.haru_i.data.remote.RetrofitClient
 import com.sungmin.haru_i.model.Photo
+import com.sungmin.haru_i.util.BitmapUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,7 +61,7 @@ class GalleryViewModel(
     private val _isLoading = MutableStateFlow(false)
     private val _errorMessage = MutableStateFlow<String?>(null)
     
-    // 강제 유지 상태: WorkManager가 종료를 보고할 때까지 무조건 "분석 중" 유지
+    // 강제 유지 상태
     private val _stickyAnalyzingMonths = MutableStateFlow<Set<String>>(emptySet())
     private val _stickyAnalyzingJournals = MutableStateFlow<Set<Long>>(emptySet())
 
@@ -68,13 +70,11 @@ class GalleryViewModel(
         .getWorkInfosByTagLiveData("analysis_task")
         .asFlow()
         .map { workInfos ->
-            // 현재 활성 상태인 작업의 월 태그 추출
             val activeMonths = workInfos.filter { !it.state.isFinished }
                 .mapNotNull { info -> 
                     info.tags.find { it.startsWith("analysis_") && it != "analysis_task" }?.removePrefix("analysis_")
                 }.toSet()
             
-            // 종료된 작업의 월 태그 추출하여 sticky 상태 해제
             val finishedMonths = workInfos.filter { it.state.isFinished }
                 .mapNotNull { info -> 
                     info.tags.find { it.startsWith("analysis_") && it != "analysis_task" }?.removePrefix("analysis_")
@@ -82,7 +82,6 @@ class GalleryViewModel(
             if (finishedMonths.isNotEmpty()) {
                 _stickyAnalyzingMonths.value = _stickyAnalyzingMonths.value - finishedMonths.toSet()
             }
-            
             activeMonths
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
@@ -102,22 +101,16 @@ class GalleryViewModel(
             if (finishedIds.isNotEmpty()) {
                 _stickyAnalyzingJournals.value = _stickyAnalyzingJournals.value - finishedIds.toSet()
             }
-            
             activeIds
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    // 최종 UI 상태: Sticky 상태거나 실제 활성 작업이 있는 경우 "분석 중"
     val analyzingMonths: StateFlow<Set<String>> = combine(
         _stickyAnalyzingMonths, activeWorkManagerMonths
-    ) { sticky, active ->
-        sticky + active
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    ) { sticky, active -> sticky + active }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     val isAnalyzingJournal: StateFlow<Set<Long>> = combine(
         _stickyAnalyzingJournals, activeWorkManagerJournals
-    ) { sticky, active ->
-        sticky + active
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    ) { sticky, active -> sticky + active }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
     
     private val _selectedTimelineMonth = MutableStateFlow<String?>(null)
     val selectedTimelineMonth = _selectedTimelineMonth.asStateFlow()
@@ -151,15 +144,7 @@ class GalleryViewModel(
         when {
             error != null -> GalleryUiState.Error(error)
             loading && all.isEmpty() -> GalleryUiState.Loading
-            else -> GalleryUiState.Success(
-                allPhotos = all,
-                groupedPhotos = grouped,
-                favoritePhotos = favorites,
-                albums = albumList,
-                selectedTab = tab,
-                babyInfo = baby,
-                selectedTimelineMonth = selectedMonth
-            )
+            else -> GalleryUiState.Success(allPhotos = all, groupedPhotos = grouped, favoritePhotos = favorites, albums = albumList, selectedTab = tab, babyInfo = baby, selectedTimelineMonth = selectedMonth)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GalleryUiState.Loading)
 
@@ -190,29 +175,18 @@ class GalleryViewModel(
     }
     
     fun deleteAlbum(album: AlbumEntity) {
-        viewModelScope.launch {
-            repository.deleteAlbum(album)
-        }
+        viewModelScope.launch { repository.deleteAlbum(album) }
     }
 
-    fun selectTab(index: Int) {
-        _selectedTab.value = index
-    }
-
-    fun selectTimelineMonth(month: String) {
-        _selectedTimelineMonth.value = month
-    }
+    fun selectTab(index: Int) { _selectedTab.value = index }
+    fun selectTimelineMonth(month: String) { _selectedTimelineMonth.value = month }
 
     fun toggleFavorite(photo: Photo) {
-        viewModelScope.launch {
-            repository.toggleFavorite(photo)
-        }
+        viewModelScope.launch { repository.toggleFavorite(photo) }
     }
 
     fun updateMemo(photo: Photo, memo: String) {
-        viewModelScope.launch {
-            repository.updateMemo(photo, memo)
-        }
+        viewModelScope.launch { repository.updateMemo(photo, memo) }
     }
 
     fun generateSmartJournal(photo: Photo) {
@@ -226,35 +200,27 @@ class GalleryViewModel(
         if (photoUri != null && context != null) {
             viewModelScope.launch {
                 try {
-                    val file = getFileFromUri(context, photoUri)
+                    Log.d("GalleryViewModel", "Starting baby photo registration for URI: $photoUri")
+                    val file = BitmapUtils.getResizedImageFile(context, photoUri)
                     if (file != null) {
+                        Log.d("GalleryViewModel", "Resized file ready: ${file.absolutePath}, size: ${file.length()}")
                         val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                         val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                        RetrofitClient.apiService.registerBaby(body, babyManager.getUserId())
+                        val response = RetrofitClient.apiService.registerBaby(body, babyManager.getUserId())
+                        Log.d("GalleryViewModel", "Server response: $response")
+                        file.delete()
+                    } else {
+                        Log.e("GalleryViewModel", "Failed to resize image")
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("GalleryViewModel", "Registration failed", e)
                 }
             }
         }
     }
 
-    private fun getFileFromUri(context: Context, uri: Uri): File? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val tempFile = File(context.cacheDir, "baby_reg_temp.jpg")
-            tempFile.outputStream().use { output ->
-                inputStream.copyTo(output)
-            }
-            tempFile
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     fun analyzeMonth(month: String, photos: List<Photo>, context: Context) {
         if (analyzingMonths.value.contains(month)) {
-            // 중단 로직
             _stickyAnalyzingMonths.value = _stickyAnalyzingMonths.value - month
             repository.cancelAnalysis(month)
             viewModelScope.launch {
@@ -262,7 +228,6 @@ class GalleryViewModel(
                 repository.finishBatch()
             }
         } else {
-            // 시작 로직: Sticky 상태로 전환 (WorkManager의 응답이 올 때까지 + 작업이 끝날 때까지 유지)
             _stickyAnalyzingMonths.value = _stickyAnalyzingMonths.value + month
             repository.analyzeMonthInBackground(month)
         }
@@ -278,11 +243,9 @@ class GalleryViewModel(
                     _favoritePhotos.value = photos.filter { it.isFavorite }
                     val grouped = groupPhotosByMonth(photos)
                     _groupedPhotos.value = grouped
-                    
                     if (_selectedTimelineMonth.value == null && grouped.isNotEmpty()) {
                         _selectedTimelineMonth.value = grouped.keys.first()
                     }
-
                     _isLoading.value = false
                 }
             } catch (e: Exception) {
@@ -294,8 +257,6 @@ class GalleryViewModel(
 
     private fun groupPhotosByMonth(photos: List<Photo>): Map<String, List<Photo>> {
         val dateFormat = SimpleDateFormat("yyyy년 MM월", Locale.KOREAN)
-        return photos.groupBy { photo ->
-            dateFormat.format(Date(photo.dateAdded * 1000L))
-        }
+        return photos.groupBy { photo -> dateFormat.format(Date(photo.dateAdded * 1000L)) }
     }
 }

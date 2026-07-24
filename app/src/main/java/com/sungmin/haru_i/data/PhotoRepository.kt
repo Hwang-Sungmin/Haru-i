@@ -214,7 +214,7 @@ class PhotoRepository(
 
     suspend fun describePhoto(photo: Photo): com.sungmin.haru_i.data.remote.DescribeResponse? {
         return try {
-            val file = getFileFromUri(photo.uri) ?: return null
+            val file = com.sungmin.haru_i.util.BitmapUtils.getResizedImageFile(context, photo.uri) ?: return null
             val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
             
@@ -225,22 +225,10 @@ class PhotoRepository(
                 updateAiAnalysis(photo, response.caption, response.emotion)
             }
             
+            file.delete() // 사용 후 임시 파일 삭제
             response
         } catch (e: Exception) {
             e.printStackTrace()
-            null
-        }
-    }
-
-    private fun getFileFromUri(uri: android.net.Uri): File? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val tempFile = File(context.cacheDir, "temp_describe_${System.currentTimeMillis()}.jpg")
-            tempFile.outputStream().use { output ->
-                inputStream.copyTo(output)
-            }
-            tempFile
-        } catch (e: Exception) {
             null
         }
     }

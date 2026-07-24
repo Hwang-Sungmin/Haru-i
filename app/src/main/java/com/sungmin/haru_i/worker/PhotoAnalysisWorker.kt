@@ -86,7 +86,7 @@ class PhotoAnalysisWorker(
                 }
 
                 if (faceDetectorHelper.isBabyPhoto(photo.uri)) {
-                    val file = getFileFromUri(photo.uri)
+                    val file = com.sungmin.haru_i.util.BitmapUtils.getResizedImageFile(applicationContext, photo.uri)
                     if (file != null) {
                         try {
                             val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
@@ -125,19 +125,6 @@ class PhotoAnalysisWorker(
                 notificationId
             )
             return Result.failure()
-        }
-    }
-
-    private fun getFileFromUri(uri: android.net.Uri): File? {
-        return try {
-            val inputStream = applicationContext.contentResolver.openInputStream(uri) ?: return null
-            val tempFile = File(applicationContext.cacheDir, "temp_worker_${System.currentTimeMillis()}.jpg")
-            tempFile.outputStream().use { output ->
-                inputStream.copyTo(output)
-            }
-            tempFile
-        } catch (e: Exception) {
-            null
         }
     }
 }

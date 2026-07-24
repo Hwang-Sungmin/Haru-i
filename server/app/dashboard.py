@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 import time
 import os
+import glob
 from state import current_status, REFERENCE_DIR, supabase
 
 router = APIRouter()
@@ -11,8 +12,9 @@ router = APIRouter()
 async def dashboard(request: Request):
     ts = int(time.time())
 
-    # Supabase에서 최근 분석 이력 가져오기
+    # 1. Supabase에서 최근 분석 이력 가져오기
     history_data = []
+    last_user_id = None
     if supabase:
         try:
             response = supabase.table("analysis_history") \
@@ -21,15 +23,34 @@ async def dashboard(request: Request):
                 .limit(15) \
                 .execute()
             history_data = response.data
+            if history_data:
+                last_user_id = history_data[0].get('user_id')
         except Exception as e:
             print(f"Failed to fetch history from Supabase: {e}")
+
+    # 2. 기준 사진 결정 로직
+    ref_photo_url = "/static/current/no_image.jpg" # 기본 이미지
+    
+    # 2-1. 특정 사용자 ID가 있는 경우 해당 사진 우선
+    if last_user_id:
+        local_ref_path = os.path.join(REFERENCE_DIR, f"{last_user_id}_ref.jpg")
+        if os.path.exists(local_ref_path):
+            ref_photo_url = f"/reference/{last_user_id}_ref.jpg?t={ts}"
+
+    # 2-2. 위에서 사진을 못 찾았다면 폴더 내 가장 최근 파일 찾기
+    if ref_photo_url.startswith("/static"):
+        all_refs = glob.glob(os.path.join(REFERENCE_DIR, "*_ref.jpg"))
+        if all_refs:
+            # 수정 시간 순으로 정렬하여 가장 최신 것 선택
+            all_refs.sort(key=os.path.getmtime)
+            latest_file = all_refs[-1]
+            ref_photo_url = f"/reference/{os.path.basename(latest_file)}?t={ts}"
 
     history_html = ""
     for h in history_data:
         res = h.get('result', 'UNKNOWN')
         color = "#4CAF50" if res == "MATCH" else ("#F44336" if res == "NO MATCH" else "#999")
         
-        # 시간 포맷팅 (ISO -> HH:MM:SS)
         created_at = h.get('created_at', '')
         display_time = created_at.split('T')[-1].split('.')[0] if 'T' in created_at else created_at
         
@@ -96,8 +117,10 @@ async def dashboard(request: Request):
                         </div>
                         <div class="card" style="text-align: center;">
                             <h3 style="margin-top: 0; font-size: 1em; color: #888;">우리 아기 기준 사진</h3>
-                            <p style="font-size: 0.8em; color: #999;">(전체 관리자용 기본 이미지)</p>
-                            <img src='/reference/baby_ref.jpg?t={ts}' style='width: 150px; height: 150px; object-fit: cover; border-radius: 50%; border: 4px solid #EBCFB2; background: #eee;'>
+                            <p style="font-size: 0.8em; color: #999;">(최근 분석 사용자 기준)</p>
+                            <div style="width: 150px; height: 150px; margin: 0 auto; border-radius: 50%; border: 4px solid #EBCFB2; overflow: hidden; background: #eee;">
+                                <img src='{ref_photo_url}' style='width: 100%; height: 100%; object-fit: cover;'>
+                            </div>
                         </div>
                     </div>
 
