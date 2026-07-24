@@ -29,28 +29,21 @@ async def dashboard(request: Request):
             print(f"Failed to fetch history from Supabase: {e}")
 
     # 2. 기준 사진 결정 로직
-    ref_photo_url = "/static/current/no_image.jpg" # 기본 이미지
+    ref_photo_url = "/reference/baby_ref.jpg" # 기본값
     
-    # 2-1. 특정 사용자 ID가 있는 경우 해당 사진 우선
+    # 특정 사용자 ID가 있는 경우 해당 사진 우선
     if last_user_id:
-        local_ref_path = os.path.join(REFERENCE_DIR, f"{last_user_id}_ref.jpg")
-        if os.path.exists(local_ref_path):
-            ref_photo_url = f"/reference/{last_user_id}_ref.jpg?t={ts}"
-
-    # 2-2. 위에서 사진을 못 찾았다면 폴더 내 가장 최근 파일 찾기
-    if ref_photo_url.startswith("/static"):
-        all_refs = glob.glob(os.path.join(REFERENCE_DIR, "*_ref.jpg"))
-        if all_refs:
-            # 수정 시간 순으로 정렬하여 가장 최신 것 선택
-            all_refs.sort(key=os.path.getmtime)
-            latest_file = all_refs[-1]
-            ref_photo_url = f"/reference/{os.path.basename(latest_file)}?t={ts}"
+        user_spec_path = os.path.join(REFERENCE_DIR, f"{last_user_id}_ref.jpg")
+        if os.path.exists(user_spec_path):
+            ref_photo_url = f"/reference/{last_user_id}_ref.jpg"
+    
+    # 캐시 방지 파라미터 추가
+    ref_photo_url += f"?t={ts}"
 
     history_html = ""
     for h in history_data:
         res = h.get('result', 'UNKNOWN')
         color = "#4CAF50" if res == "MATCH" else ("#F44336" if res == "NO MATCH" else "#999")
-        
         created_at = h.get('created_at', '')
         display_time = created_at.split('T')[-1].split('.')[0] if 'T' in created_at else created_at
         
@@ -117,10 +110,10 @@ async def dashboard(request: Request):
                         </div>
                         <div class="card" style="text-align: center;">
                             <h3 style="margin-top: 0; font-size: 1em; color: #888;">우리 아기 기준 사진</h3>
-                            <p style="font-size: 0.8em; color: #999;">(최근 분석 사용자 기준)</p>
-                            <div style="width: 150px; height: 150px; margin: 0 auto; border-radius: 50%; border: 4px solid #EBCFB2; overflow: hidden; background: #eee;">
+                            <div style="width: 150px; height: 150px; margin: 15px auto; border-radius: 50%; border: 4px solid #EBCFB2; overflow: hidden; background: #eee;">
                                 <img src='{ref_photo_url}' style='width: 100%; height: 100%; object-fit: cover;'>
                             </div>
+                            <p style="font-size: 0.8em; color: #999;">(최근 분석 사용자 기준)</p>
                         </div>
                     </div>
 

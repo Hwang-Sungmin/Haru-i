@@ -11,29 +11,54 @@
 *   **최신순 자동 정렬**: 앱 실행 시 가장 최신의 추억을 먼저 노출.
 
 ### 2. 고도화된 아기 사진 판별 (AI Hybrid Filter)
-*   **1단계 (온디바이스)**: Google ML Kit을 통해 얼굴 유무 및 아기 관련 라벨(`Baby`, `Infant` 등) 1차 선별.
+*   **1단계 (온디바이스)**: Google ML Kit을 통해 얼굴 유무 및 아기 관련 라벨 1차 선별.
 *   **2단계 (서버 정밀 인식)**: Python AI 서버(DeepFace)와 연동하여 등록된 '우리 아기'와 얼굴 지문(Embedding) 비교 분석.
-*   **백그라운드 자동화**: **WorkManager**를 도입하여 앱이 꺼져 있거나 백그라운드에 있어도 분석 작업을 끝까지 완료하며, 진행 상황을 알림(Notification)으로 제공.
+*   **백그라운드 자동화**: WorkManager를 통해 앱 종료 후에도 분석 작업을 지속하며, 진행 상황을 상단 알림(10개 단위 최적화)으로 제공.
 
 ### 3. AI 기반 스마트 기록 보조 (Smart Journaling)
-*   **표정 및 상황 분석**: DeepFace를 사용하여 아기의 감정(행복, 평온, 졸림 등)을 분석.
-*   **AI 캡션 제안**: 분석된 감정에 맞춰 "방긋 웃고 있는 예쁜 아기 모습이에요"와 같은 감성적인 기록 초안 자동 생성.
-*   **원클릭 기록**: 제안된 문구를 버튼 하나로 메모장에 바로 입력하여 육아 일기 작성의 번거로움 해소.
+*   **감정 분석**: 아기의 표정을 분석하여 기분(행복, 평온, 졸림 등)을 자동으로 감지.
+*   **AI 캡션 제안**: 분석된 감정에 맞춰 감성적인 기록 초안 자동 생성 및 원클릭 입력 지원.
 
-### 4. 사용자 친화적 UI/UX 개선
-*   **커스텀 사진 선택기**: 복잡한 시스템 탐색기 대신 앱 내 사진만 깔끔하게 보여주는 전용 선택기 적용.
-*   **Material 3 DatePicker**: 달력 형태의 직관적인 인터페이스로 아기 생년월일 설정 편의성 증대.
-*   **감정 뱃지**: 갤러리 그리드에서 아기의 분석된 기분을 아이콘(😊, 😴 등)으로 즉시 확인.
+### 4. 클라우드 기반 데이터 관리 (Supabase)
+*   **영구적 데이터 보존**: 모든 분석 이력이 Supabase PostgreSQL DB에 실시간 저장되어 서버 재시작 시에도 유지.
+*   **사용자 격리 시스템**: 사용자별 고유 ID(UUID)를 기반으로 아기 기준 사진과 분석 이력을 분리하여 저장(Supabase Storage).
 
-### 5. AI 분석 모니터링 대시보드
-*   **웹 기반 모니터링**: 서버 구동 시 브라우저(`http://localhost:8000`)를 통해 현재 분석 중인 사진과 과거 이력을 한눈에 확인 가능.
-*   **시스템 제어**: 대시보드에서 분석 중단/재개 및 시스템 상태를 실시간으로 제어.
+### 5. 성능 및 리소스 최적화
+*   **이미지 리사이징**: 서버 전송 전 기기 내에서 이미지를 최적화(최대 1024px)하여 전송 속도 90% 향상 및 데이터 사용량 절감.
+*   **지능형 상태 동기화**: 'Sticky State' 로직을 통해 백그라운드 전환 시에도 분석 상태가 완벽하게 유지.
+
+---
+
+## 🏗 프로젝트 진화 과정 (Technical History)
+
+### **Phase 1: 기반 구축 (On-device & Basic UI)**
+*   Jetpack Compose 기반의 현대적인 안드로이드 UI 개발.
+*   ML Kit을 활용한 온디바이스 얼굴 및 라벨 인식 구현.
+*   Room DB를 통한 갤러리/앨범 메타데이터 로컬 저장.
+
+### **Phase 2: AI 서버 연동 (FastAPI & DeepFace)**
+*   Python FastAPI 기반 정밀 분석 서버 구축.
+*   DeepFace(Facenet512)를 이용한 정밀 인물 검증 시스템 도입.
+*   웹 기반 AI 모니터링 대시보드 개발.
+
+### **Phase 3: 안정성 및 UX 고도화 (WorkManager & Refactoring)**
+*   WorkManager 기반의 백그라운드 분석 엔진 전환 및 알림 기능 구현.
+*   'Sticky State' 로직 도입으로 포그라운드/백그라운드 전환 시 UI 싱크 문제 해결.
+*   서버 코드 리팩토링 (Main, Dashboard, State 분리) 및 Fail-safe 백엔드 시스템 구축.
+
+### **Phase 4: 클라우드 확장 및 다중 사용자 (Supabase)**
+*   Supabase PostgreSQL 연동으로 분석 이력 영구 저장.
+*   사용자별 고유 ID(UUID) 헤더 기반 인증 및 데이터 격리 시스템 구축.
+*   Supabase Storage 도입으로 사용자별 프로필 사진 클라우드 동기화.
+
+### **Phase 5: 성능 최적화 및 안정화 (Current)**
+*   **On-device Pre-processing**: 업로드 전 이미지 리사이징(1024px) 도입으로 네트워크 부하 최소화.
+*   **배치 모드 강화**: 서버 대시보드의 실시간 상태 플리커링(Flickering) 현상 제거.
+*   **알림 최적화**: 시스템 자원 절약을 위한 알림 갱신 빈도 조절(10개 단위).
 
 ---
 
 ## 🖥 AI 분석 서버 사용 가이드 (Python)
-
-정밀 인물 인식 및 감정 분석을 위해 별도의 서버 실행이 필요합니다.
 
 ### 1. 서버 환경 구축
 ```bash
@@ -43,44 +68,31 @@ cd server
 # 2. 필수 라이브러리 설치
 pip3 install -r requirements.txt
 
-# 3. 서버 실행
+# 3. 환경 변수 설정 (.env 파일 생성)
+SUPABASE_URL=your_project_url
+SUPABASE_KEY=your_anon_key
+
+# 4. 서버 실행
 python3 app/main.py
 ```
-*   **Fail-safe 백엔드**: 서버는 환경에 따라 `ssd`, `opencv`, `mediapipe` 등 여러 분석 엔진을 자동으로 전환하며 시도하여 안정성을 보장합니다.
-*   **서버 파일 구조**: `main.py`(API), `dashboard.py`(UI), `state.py`(데이터 관리)로 리팩토링되어 유지보수가 용이합니다.
-
----
-
-## 🧪 사용 및 테스트 방법
-
-### Step 1: 아기 정보 등록
-1.  앱 우측 상단 **설정(톱니바퀴)** 클릭.
-2.  상단 **프로필 영역**을 터치하여 우리 아기의 **선명한 정면 사진** 선택 (커스텀 피커).
-3.  **생년월일**을 달력에서 선택 후 저장.
-
-### Step 2: 백그라운드 분석 실행
-1.  **타임라인** 탭에서 특정 월 선택 후 **'아기 사진 찾기'** 클릭.
-2.  앱을 닫아도 상단 **알림창**을 통해 진행률(예: 15/40 분석 중)이 표시되며 백그라운드에서 작업이 지속됩니다.
-
-### Step 3: AI 스마트 기록 남기기
-1.  사진을 클릭하여 **메모 작성** 창을 엽니다.
-2.  우측 상단의 ✨ **'AI 추천'** 버튼을 클릭합니다.
-3.  분석이 완료되면 나타나는 **'메모에 넣기'**를 눌러 기록을 완성합니다.
+*   **모니터링**: 브라우저에서 `http://localhost:8000`에 접속하여 실시간 분석 상태를 확인할 수 있습니다.
 
 ---
 
 ## 🛠 기술 스택
 
 ### Android App
-*   **Kotlin (2.0.21)**, **Jetpack Compose (Material 3)**
-*   **WorkManager**: 안정적인 백그라운드 서버 통신 및 작업 예약.
-*   **Room DB**: 분석 결과(`isBaby`, `emotion`, `caption`) 및 메타데이터 영구 저장.
-*   **Retrofit2 & OkHttp**: AI 서버 REST API 연동.
+*   **Language**: Kotlin (2.0.21)
+*   **UI**: Jetpack Compose (Material 3)
+*   **Async**: Coroutines & WorkManager
+*   **Local DB**: Room (v4 Destructive Migration)
+*   **Network**: Retrofit2 & OkHttp (Header 기반 식별)
 
 ### AI Server
-*   **Python 3.10+**, **FastAPI**
-*   **DeepFace**: 인물 검증(`verify`) 및 감정 분석(`analyze`) 핵심 엔진.
-*   **Fail-safe Logic**: OpenCV/SSD 백엔드 자동 fallback 시스템.
+*   **Framework**: Python 3.10+, FastAPI
+*   **Database**: Supabase (PostgreSQL)
+*   **Storage**: Supabase Storage (`profiles` bucket)
+*   **AI Engine**: DeepFace (Facenet512, SSD, OpenCV)
 
 ---
 *본 프로젝트는 소중한 아이의 성장을 더 쉽고 똑똑하게 기록하기 위해 개발되었습니다.*

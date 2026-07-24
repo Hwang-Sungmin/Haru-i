@@ -104,13 +104,19 @@ async def register_baby(
         # 1. 파일 읽기
         contents = await file.read()
         
-        # 2. 로컬 저장 (대시보드 표시용)
-        local_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
-        with open(local_path, "wb") as buffer:
+        # 2. 로컬 저장 (사용자 식별용)
+        user_ref_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
+        with open(user_ref_path, "wb") as buffer:
             buffer.write(contents)
-        logger.info(f"Local reference saved at: {local_path}")
             
-        # 3. Supabase Storage 업로드
+        # 3. 로컬 저장 (대시보드 기본값 및 호환성용)
+        legacy_ref_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
+        with open(legacy_ref_path, "wb") as buffer:
+            buffer.write(contents)
+            
+        logger.info(f"Local reference saved at: {user_ref_path}")
+            
+        # 4. Supabase Storage 업로드
         if supabase:
             try:
                 bucket_name = "profiles"
@@ -128,9 +134,9 @@ async def register_baby(
                     file=contents,
                     file_options={"content-type": "image/jpeg"}
                 )
-                logger.info(f"Supabase upload success: {upload_res}")
+                logger.info(f"Supabase upload success for {x_user_id}")
             except Exception as se:
-                logger.error(f"Supabase Storage Upload Error: {str(se)}")
+                logger.error(f"Supabase Storage Upload Error for {x_user_id}: {str(se)}")
         else:
             logger.warning("Supabase client not initialized, skipping cloud upload")
                 
@@ -160,6 +166,11 @@ async def get_reference_photo(user_id: str) -> str:
             return local_path
         except Exception as e:
             logger.error(f"Failed to download reference from Supabase: {str(e)}")
+            
+    # 최후의 수단: baby_ref.jpg 사용
+    legacy_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
+    if os.path.exists(legacy_path):
+        return legacy_path
             
     return None
 

@@ -2,11 +2,10 @@ package com.sungmin.haru_i.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import android.util.Log
-import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.max
@@ -14,97 +13,48 @@ import kotlin.math.max
 object BitmapUtils {
     private const val TAG = "BitmapUtils"
 
+    /**
+     * URI로부터 이미지를 읽어와 리사이징하고 임시 파일로 저장합니다.
+     * (Android 12 이상 최적화 방식)
+     */
     fun getResizedImageFile(context: Context, uri: Uri, maxDimension: Int = 1024): File? {
         return try {
-            val resolver = context.contentResolver
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
             
-            // 1. 이미지 크기 측정
-            val options = BitmapFactory.Options()
-            val field1 = options.javaClass.getField("inJustDecodeSize")
-            field1.set(options, true)
-            
-            resolver.openInputStream(uri)?.use { 
-                BitmapFactory.decodeStream(it, null, options)
-            }
-
-            // 2. 샘플 사이즈 계산
-            var sampleSize = 1
-            val srcWidth = options.outWidth
-            val srcHeight = options.outHeight
-            
-            if (max(srcWidth, srcHeight) > maxDimension) {
-                val halfWidth = srcWidth / 2
-                val halfHeight = srcHeight / 2
-                while ((halfWidth / sampleSize) >= maxDimension || (halfHeight / sampleSize) >= maxDimension) {
-                    sampleSize *= 2
+            // 1. 리사이징 설정
+            val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val srcWidth = info.size.width
+                val srcHeight = info.size.height
+                
+                if (max(srcWidth, srcHeight) > maxDimension) {
+                    val ratio = maxDimension.toFloat() / max(srcWidth, srcHeight)
+                    val targetWidth = (srcWidth * ratio).toInt()
+                    val targetHeight = (srcHeight * ratio).toInt()
+                    decoder.setTargetSize(targetWidth, targetHeight)
+                    Log.d(TAG, "Resizing from ${srcWidth}x${srcHeight} to ${targetWidth}x${targetHeight}")
                 }
+                
+                // 고화질 설정 및 회전 자동 보정
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             }
 
-            // 3. 비트맵 로드
-            val decodeOptions = BitmapFactory.Options()
-            val field2 = decodeOptions.javaClass.getField("inSampleSize")
-            field2.set(decodeOptions, sampleSize)
-            
-            var bitmap = resolver.openInputStream(uri)?.use { 
-                BitmapFactory.decodeStream(it, null, decodeOptions)
-            } ?: return null
-
-            // 4. 회전 보정
-            bitmap = rotateBitmapIfRequired(context, bitmap, uri)
-
-            // 5. 정밀 리사이징
-            if (max(bitmap.width, bitmap.height) > maxDimension) {
-                val scale = maxDimension.toFloat() / max(bitmap.width, bitmap.height)
-                val newWidth = (bitmap.width * scale).toInt()
-                val newHeight = (bitmap.height * scale).toInt()
-                val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-                if (scaledBitmap != bitmap) {
-                    bitmap.recycle()
-                    bitmap = scaledBitmap
-                }
-            }
-
-            // 6. 저장
+            // 2. 임시 파일 생성
             val tempFile = File(context.cacheDir, "resized_${System.currentTimeMillis()}.jpg")
             FileOutputStream(tempFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             }
             
-            Log.d(TAG, "Resized to: ${tempFile.length() / 1024} KB")
-            bitmap.recycle()
+            Log.d(TAG, "Resized file created: ${tempFile.length() / 1024} KB")
+            
+            // 3. 비트맵 자원 해제
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+            
             tempFile
         } catch (e: Exception) {
-            Log.e(TAG, "Resize error", e)
+            Log.e(TAG, "Error in getResizedImageFile", e)
             null
         }
-    }
-
-    private fun rotateBitmapIfRequired(context: Context, bitmap: Bitmap, uri: Uri): Bitmap {
-        return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                val exifInterface = ExifInterface(input)
-                val orientation = exifInterface.getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL
-                )
-                when (orientation) {
-                    ExifInterface.ORIENTATION_ROTATE_90 -> rotateImage(bitmap, 90f)
-                    ExifInterface.ORIENTATION_ROTATE_180 -> rotateImage(bitmap, 180f)
-                    ExifInterface.ORIENTATION_ROTATE_270 -> rotateImage(bitmap, 270f)
-                    else -> bitmap
-                }
-            } ?: bitmap
-        } catch (e: Exception) {
-            bitmap
-        }
-    }
-
-    private fun rotateImage(bitmap: Bitmap, degrees: Float): Bitmap {
-        val matrix = Matrix().apply { postRotate(degrees) }
-        val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        if (rotatedBitmap != bitmap) {
-            bitmap.recycle()
-        }
-        return rotatedBitmap
     }
 }
