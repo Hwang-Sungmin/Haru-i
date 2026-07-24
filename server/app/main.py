@@ -94,20 +94,25 @@ async def register_baby(
     x_user_id: str = Header(None)
 ):
     if not x_user_id:
+        logger.error("Registration failed: X-User-ID header is missing")
         raise HTTPException(status_code=400, detail="X-User-ID header is required")
         
     current_status["task"] = "Registering..."
+    logger.info(f"Registering baby photo for user: {x_user_id}")
+
     try:
-        # 1. 로컬 백업 저장 (선택 사항)
-        local_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
+        # 1. 파일 읽기
         contents = await file.read()
+        
+        # 2. 로컬 저장 (대시보드 표시용)
+        local_path = os.path.join(REFERENCE_DIR, f"{x_user_id}_ref.jpg")
         with open(local_path, "wb") as buffer:
             buffer.write(contents)
+        logger.info(f"Local reference saved at: {local_path}")
             
-        # 2. Supabase Storage 업로드
+        # 3. Supabase Storage 업로드
         if supabase:
             try:
-                # 'profiles' 버킷이 미리 생성되어 있어야 합니다.
                 bucket_name = "profiles"
                 file_path = f"{x_user_id}.jpg"
                 
@@ -118,16 +123,21 @@ async def register_baby(
                     pass
                     
                 # 신규 파일 업로드
-                supabase.storage.from_(bucket_name).upload(
+                upload_res = supabase.storage.from_(bucket_name).upload(
                     path=file_path,
                     file=contents,
                     file_options={"content-type": "image/jpeg"}
                 )
-                logger.info(f"Successfully uploaded profile for user: {x_user_id}")
+                logger.info(f"Supabase upload success: {upload_res}")
             except Exception as se:
                 logger.error(f"Supabase Storage Upload Error: {str(se)}")
+        else:
+            logger.warning("Supabase client not initialized, skipping cloud upload")
                 
-        return {"status": "success"}
+        return {"status": "success", "user_id": x_user_id}
+    except Exception as e:
+        logger.error(f"Registration Error: {str(e)}")
+        return {"status": "error", "message": str(e)}
     finally:
         current_status["task"] = "Idle"
 
@@ -136,27 +146,21 @@ async def get_reference_photo(user_id: str) -> str:
     """사용자의 기준 사진 경로를 반환합니다. 로컬에 없으면 Storage에서 다운로드합니다."""
     local_path = os.path.join(REFERENCE_DIR, f"{user_id}_ref.jpg")
     
-    # 로컬에 있으면 즉시 반환
     if os.path.exists(local_path):
         return local_path
         
-    # 로컬에 없으면 Supabase Storage에서 다운로드
     if supabase:
         try:
             bucket_name = "profiles"
             file_path = f"{user_id}.jpg"
+            logger.info(f"Downloading reference for {user_id} from Supabase...")
             res = supabase.storage.from_(bucket_name).download(file_path)
             with open(local_path, "wb") as f:
                 f.write(res)
             return local_path
         except Exception as e:
-            logger.error(f"Failed to download reference photo for {user_id}: {str(e)}")
+            logger.error(f"Failed to download reference from Supabase: {str(e)}")
             
-    # 최후의 수단: 기본 파일 체크
-    default_path = os.path.join(REFERENCE_DIR, "baby_ref.jpg")
-    if os.path.exists(default_path):
-        return default_path
-        
     return None
 
 
@@ -188,7 +192,6 @@ async def analyze_photo(
         shutil.copy(temp_analyze_path, current_display_path)
         current_status["current_img"] = "current_target.jpg"
 
-        # 사용자별 기준 사진 가져오기
         ref_path = await get_reference_photo(x_user_id)
         if not ref_path:
             raise ValueError(f"사용자({x_user_id})의 기준 사진이 없습니다.")
@@ -221,7 +224,6 @@ async def analyze_photo(
         res_text = "MATCH" if is_verified else "NO MATCH"
         current_status["last_result"] = res_text
 
-        # Supabase Logging
         if supabase:
             try:
                 data = {
@@ -248,7 +250,6 @@ async def analyze_photo(
         current_status["is_analyzing"] = False
         if not current_status["is_batch_mode"]:
             current_status["task"] = "Idle"
-            
         if os.path.exists(temp_analyze_path):
             os.remove(temp_analyze_path)
         current_status["last_update"] = time.time()
@@ -265,7 +266,6 @@ async def describe_photo(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(contents)
 
-        # DeepFace를 사용하여 감정 및 정보 분석
         backends = ["ssd", "opencv", "skip"]
         objs = None
         for backend in backends:
@@ -320,5 +320,4 @@ async def describe_photo(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
