@@ -6,5 +6,5 @@ object Config {
     /**
      * Python AI 분석 서버 주소 (Mac 로컬 IP)
      */
-    const val AI_SERVER_BASE_URL = "로컬주소 넣기"
+    const val AI_SERVER_BASE_URL = "http://192.168.56.143:8000"
 }

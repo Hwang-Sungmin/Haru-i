@@ -206,8 +206,18 @@ class GalleryViewModel(
                         Log.d("GalleryViewModel", "Resized file ready: ${file.absolutePath}, size: ${file.length()}")
                         val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
                         val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
-                        val response = RetrofitClient.apiService.registerBaby(body, babyManager.getUserId())
-                        Log.d("GalleryViewModel", "Server response: $response")
+                        
+                        try {
+                            val response = RetrofitClient.apiService.registerBaby(body, babyManager.getUserId())
+                            Log.d("GalleryViewModel", "Server response: $response")
+                            android.widget.Toast.makeText(context, "아기 정보가 서버에 동기화되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (e: java.net.SocketTimeoutException) {
+                            Log.e("GalleryViewModel", "Connection timeout", e)
+                            android.widget.Toast.makeText(context, "서버 연결 시간이 초과되었습니다. IP 설정을 확인해주세요.", android.widget.Toast.LENGTH_LONG).show()
+                        } catch (e: java.net.ConnectException) {
+                            Log.e("GalleryViewModel", "Connection failed", e)
+                            android.widget.Toast.makeText(context, "서버에 연결할 수 없습니다. 서버가 켜져있는지 확인해주세요.", android.widget.Toast.LENGTH_LONG).show()
+                        }
                         file.delete()
                     } else {
                         Log.e("GalleryViewModel", "Failed to resize image")
@@ -223,6 +233,8 @@ class GalleryViewModel(
         if (analyzingMonths.value.contains(month)) {
             _stickyAnalyzingMonths.value = _stickyAnalyzingMonths.value - month
             repository.cancelAnalysis(month)
+            // 알림 즉시 제거
+            com.sungmin.haru_i.util.NotificationHelper.cancelNotification(context, month.hashCode())
             viewModelScope.launch {
                 repository.stopServer()
                 repository.finishBatch()
